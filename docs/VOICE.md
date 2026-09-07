@@ -83,9 +83,14 @@ Status: Unknown | Present: False
 
 `Win32_VideoController` yalnızca AMD Radeon tümleşik grafikleri listeliyor.
 NVIDIA sürücüleri, `nvcuda.dll` ve `nvml.dll` kurulu — eksik olan cihazın
-kendisi. En olası sebep dizüstünde dGPU'nun kapatılmış olması (Armoury Crate
-/ MyASUS'ta "Eco Mode" veya BIOS'ta dGPU devre dışı). Değiştirdikten sonra
-**yeniden başlatmak gerekir.**
+kendisi.
+
+**Sebep bir arıza değil, bilinçli bir ayar:** dizüstü, pil ömrü için
+**G-Helper üzerinden iGPU (Eco) moduna** alınmış. Bu modda dGPU PCI
+veriyolundan tamamen ayrılır, dolayısıyla Kod 45 beklenen davranıştır.
+
+GPU'yu kullanmak için G-Helper'da **Standard** (veya Optimus/Auto) moda geçip
+**yeniden başlatmak** gerekir; şarja takılı olmak da önerilir.
 
 Düzeldiğinde yapılacak tek şey yok — kod zaten otomatik algılıyor:
 
