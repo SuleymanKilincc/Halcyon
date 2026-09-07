@@ -60,15 +60,19 @@ modeli, 8 iş parçacığı):
 
 Faz 1 hedefi 1500 ms'ti. LLM'siz hat hedefin çok altında.
 
-LLM dahil edildiğinde tablo değişiyor — çünkü qwen3.5:9b şu an **CPU'da**
-çalışıyor (12 token/sn, ilk token 2.8 sn):
+LLM dahil edildiğinde darboğaz dil modeline kayıyor — GPU kapalı olduğu için
+her şey CPU'da. Pil profilinin (`qwen3.5:2b`) ölçülen sayıları aşağıdaki
+[Profiller](#profiller-pil--tam-güç) bölümünde.
 
-| Aşama | Süre |
-|---|---|
-| İlk token | 4.0 - 20.8 sn |
-| Toplam ilk ses | medyan 8.5 sn |
+> Bu bölümde daha önce çok daha kötü sayılar yazıyordu (ilk token 4-20 sn,
+> toplam 8.5 sn). Onlar ölçüm aracının kendi artefaktıydı: benchmark her turda
+> LLM akışını yarıda bırakıyordu, sunucu üretmeye devam ediyordu ve bir
+> sonraki tur o kuyruğun arkasında bekliyordu. Düzeltildikten sonra aynı
+> donanımda ilk token 4-20 sn değil, ~1-1.6 sn. Ayrıntı: "Yarıda kesilen
+> üretimin bedeli".
 
-Yani ses hattı hazır, **darboğaz tamamen GPU'nun devre dışı olmasında.**
+Ses hattının kendisi (STT + VAD + TTS) her koşulda hazır ve hızlı;
+**GPU açıldığında kazanılacak yer dil modeli ve Türkçe doğruluğu.**
 
 ## GPU
 
