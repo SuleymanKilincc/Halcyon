@@ -95,16 +95,42 @@ Düzeldiğinde yapılacak tek şey yok — kod zaten otomatik algılıyor:
 
 Beklenen: STT ~500 ms → ~200 ms **ve** belirgin biçimde daha doğru Türkçe.
 
-## Model seçimi ve ölçülen maliyeti
+## Model seçimi: hız ve doğruluk
 
-CPU'da, 2.6 sn'lik bir Türkçe cümlede (int8, 8 iş parçacığı):
+CPU'da, int8, 8 iş parçacığı. Doğruluk 4 cümlelik bir örneklemde
+(3 Türkçe + 1 İngilizce) kelimesi kelimesine tam eşleşme sayısıdır:
 
-| Model | Süre | Not |
-|---|---|---|
-| `tiny` | 269 ms | Türkçe doğruluğu yetersiz |
-| `base` | 498 ms | **CPU varsayılanı** — bütçeye sığan en büyük model |
-| `small` | 1646 ms | Daha doğru, ama tek başına bütçeyi aşıyor |
-| `large-v3-turbo` | — | GPU gerektirir; hedeflenen model |
+| Model | Süre | Tam eşleşme | Not |
+|---|---|---|---|
+| `tiny` | 269 ms | — | Türkçe kullanılamaz |
+| `base` | ~1000 ms | 1 / 4 | **CPU varsayılanı.** İngilizce kusursuz, Türkçe bozuk |
+| `small` | ~3150 ms | 2 / 4 | Türkçe belirgin düzeliyor |
+| `large-v3-turbo` | ~13400 ms | 3 / 4 | **Hedef model — GPU şart** |
+
+Türkçede modeller arası fark somut:
+
+```
+base            "BİVİ SAYA RIM'ın sıcaklığı kaç derece?"
+small           "Bilgisayarımın sıcaklığı kaç derece?"      TAM
+large-v3-turbo  "Bilgisayarımın sıcaklığı kaç derece?"      TAM
+
+base            "Masal üstündeki bütün Pitom Dostyalarını isteri."
+small           "Masa üstündeki bütün piton dosyalarını ister."
+large-v3-turbo  "Masa üstündeki bütün Python dosyalarının listeli."
+```
+
+Son satır önemli: `small` "Python"u fonetik olarak "piton" duyuyor,
+`large-v3-turbo` terim olarak tanıyor. Kod yazan bir asistan için bu fark
+büyük.
+
+İngilizce her boyutta kusursuz — `base` bile 1/1 tam eşleşme veriyor.
+Türkçe model boyutuna duyarlı, İngilizce değil.
+
+> Ölçüm notu: girdi Piper ile sentezlenmiş konuşmadır, gerçek insan sesi
+> değil. Whisper genelde gerçek konuşmada daha iyi sonuç verir, dolayısıyla
+> bu tablo bir alt sınır sayılmalıdır. Ayrıca Türkçe metni **diakritikleriyle
+> yazmak şarttır** — "Bugun" yazılırsa Piper "boo-goon" der ve ölçüm anlamsız
+> hale gelir.
 
 `voice/stt.py` CUDA yokken `large-v3-turbo` yerine `base`'e düşer ve bunu
 **sebebiyle birlikte** ekrana yazar. Zorlamak için:
@@ -137,9 +163,26 @@ için kullanılabilir.
 | `voice/cli.py` | Canlı terminal testi |
 | `bench/latency.py` | Mikrofonsuz gecikme ölçümü |
 
+## Çok dillilik
+
+Dil algılama her konuşma için Whisper tarafından otomatik yapılır; sabit bir
+dil ayarı yoktur. `voice/settings.py` içindeki `candidate_languages` algılamayı
+`("tr", "en")` ile sınırlar — Whisper kısa cümlelerde bazen alakasız bir dil
+tahmin eder, bu sınır onu engeller. Algılanan dile göre TTS sesi de otomatik
+değişir.
+
+Ölçüm: 4/4 doğru algılama, güven 0.96 - 1.00.
+
+**Bilinen sınır:** tek cümle içinde dil karıştırmak (Türkçe cümle + İngilizce
+terim, bir geliştiricinin doğal konuşması) desteklenmiyor. Whisper cümle
+başına tek bir dil seçer, TTS de cümlenin tamamını o dilin sesiyle okur —
+Türkçe ses İngilizce kelimeleri okuduğunda kulağa kötü gelir. Cümle bazında
+dil değiştirmek sorunsuz çalışır.
+
 ## Henüz yapılmadı
 
 * Uyandırma sözcüğü ("Hey Jarvis") — Faz 5
 * GUI entegrasyonu — Faz 2 (`gui.py` hâlâ eski hattı kullanıyor)
 * Akustik yankı bastırma
 * Konuşmacı tanıma
+* Cümle içi dil karışımı (code-switching)
