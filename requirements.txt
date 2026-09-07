@@ -1,0 +1,51 @@
+# Core LLM and Agent Framework
+langchain>=0.3.0
+langchain-ollama>=0.1.0
+langchain-community>=0.3.0
+langgraph>=0.2.0
+
+# Web Search and Scraping
+duckduckgo-search>=4.0.0
+beautifulsoup4>=4.12.0
+requests>=2.31.0
+lxml>=4.9.0
+
+# Web Automation
+playwright>=1.40.0
+selenium>=4.15.0
+
+# Archive Handling
+py7zr>=0.20.0
+rarfile>=4.1
+
+# GUI Framework
+customtkinter>=5.2.0
+pillow>=10.0.0
+
+# Voice Input (Speech Recognition)
+SpeechRecognition>=3.10.0
+pyaudio>=0.2.13
+
+# Voice Output (Text-to-Speech)
+pyttsx3>=2.90
+
+# Advanced Voice (Local)
+openai-whisper>=20230314
+torch>=2.0.0
+TTS>=0.22.0
+
+# Language Detection
+langdetect>=1.0.9
+
+# Database
+sqlalchemy>=2.0.0
+
+# Hardware Monitoring
+psutil>=5.9.0
+GPUtil>=1.4.0
+wmi>=1.5.1
+
+# Utilities
+python-dotenv>=1.0.0
+colorama>=0.4.6
+python-dateutil>=2.8.2
