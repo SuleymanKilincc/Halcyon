@@ -168,6 +168,71 @@ için kullanılabilir.
 | `voice/cli.py` | Canlı terminal testi |
 | `bench/latency.py` | Mikrofonsuz gecikme ölçümü |
 
+## Profiller (pil / tam güç)
+
+Dizüstü, dGPU açık mı kapalı mı olduğuna göre iki farklı makine. Sistem
+başlangıçta donanımı algılayıp tutarlı bir model seti seçiyor — bileşenlerin
+tek tek bozulmasını beklemiyor.
+
+| | `battery` | `performance` |
+|---|---|---|
+| Ne zaman | CUDA yok (iGPU / Eco mod) | dGPU açık, VRAM ≥ 7 GB |
+| STT | `base` @ CPU | `large-v3-turbo` @ CUDA |
+| LLM | `qwen3.5:2b`, ctx 4096 | `qwen3.5:9b`, ctx 16384 |
+| Beklenen ilk ses | ~2800 ms | ~900 ms (hedef) |
+
+Ara bir profil daha var: `performance-lowvram` — dGPU var ama 7 GB'ın altında
+VRAM varsa hızlı STT'yi tutup LLM'i `qwen3.5:4b`'ye düşürüyor.
+
+Ne çalıştığını görmek için:
+
+```bash
+python -m voice.cli --info
+```
+
+Elle seçmek için (`--profile` veya `JARVIS_PROFILE`):
+
+```bash
+python -m voice.cli --llm --profile battery
+```
+
+Profil seçimi **kendini açıklıyor** — dGPU kapalıysa sebebini ve çözümünü
+yazıyor, sessizce küçük modele düşmüyor.
+
+### Pil modunda ölçülen (GPU kapalı, `qwen3.5:2b`)
+
+| Aşama | Süre |
+|---|---|
+| STT | ~500 ms |
+| LLM ilk token (ısınmış, yeni prompt) | ~1000 ms |
+| İlk cümlenin sentezi | ~340 ms |
+| **Toplam ilk ses** | **en iyi 1814 ms, medyan ~3600 ms** |
+
+`qwen3.5:4b` ile aynı ölçüm ~1600 ms ilk token veriyor; pil modunda 2b tercih
+edildi çünkü sesli turda hız doğruluktan değerli. Doğruluk isteyen
+`--model qwen3.5:4b` diyebilir.
+
+### Yarıda kesilen üretimin bedeli
+
+Ollama yüklü model başına istekleri sıraya alıyor. İstemci okumayı bırakınca
+sunucu `num_predict`'e kadar üretmeye devam ediyor ve **sonraki istek onun
+arkasında bekliyor**: ölçülen fark, ısınmış ve yeni bir prompt'ta
+
+```
+akış sonuna kadar tüketildi      ~1000-1600 ms
+akış ilk token'dan sonra bırakıldı  ~2200-2350 ms
+```
+
+`.close()` bunu engellemiyor (iki istemcide de denendi). Bu yüzden profillerde
+`num_predict` küçük tutuldu ve erken çıkan çağrılar kalanı boşaltıyor. Tek
+boşaltamayan yer sözü kesme — orada ceza bir sonraki tura biniyor ve kullanıcı
+zaten konuştuğu için kısmen gizleniyor. GPU'da üretim birkaç kat hızlı olduğu
+için oransal olarak küçülüyor.
+
+> Ölçüm tuzağı: aynı prompt'u tekrarlamak Ollama'nın KV önbelleğine düşüyor ve
+> ~120 ms gösteriyor. Gerçek bir turda görülmeyecek bir sayı — her zaman yeni
+> prompt'la ölçün.
+
 ## Çok dillilik
 
 Dil algılama her konuşma için Whisper tarafından otomatik yapılır; sabit bir

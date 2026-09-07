@@ -5,8 +5,9 @@ Runs without a microphone: a sentence is synthesised with Piper, resampled to
 16 kHz and fed through the real VAD and the real Whisper model, so every stage
 except the physical audio device is measured end to end.
 
-    python -m bench.latency              # audio path only (no LLM)
-    python -m bench.latency --llm        # include a streaming Ollama round trip
+    python -m bench.latency                        # audio path only (no LLM)
+    python -m bench.latency --llm                  # include a streaming LLM round trip
+    python -m bench.latency --llm --profile battery
 
 The number to watch is *first audio*: how long after the user stops speaking
 until they hear the first sound back. Anything under ~1.5 s reads as
@@ -22,6 +23,9 @@ import time
 
 import numpy as np
 
+from core.hardware import detect
+from core.llm import build_llm, check_model_available, stream_reply
+from core.profiles import PROFILES, apply_to_voice_settings, resolve
 from voice.settings import DEFAULT, SAMPLE_RATE
 from voice.stt import Transcriber
 from voice.tts import SentenceStreamer, Synthesizer
@@ -77,28 +81,6 @@ def run_vad(detector: SpeechDetector, audio: np.ndarray) -> tuple[np.ndarray | N
     return None, frames
 
 
-def ollama_stream(prompt: str, model: str):
-    """Stream a reply from Ollama, yielding text deltas."""
-    import config
-    from langchain_ollama import ChatOllama
-
-    llm = ChatOllama(
-        model=model,
-        base_url=config.OLLAMA_BASE_URL,
-        temperature=0.3,
-        num_predict=160,
-        reasoning=False,  # thinking tokens are pure latency on a voice turn
-    )
-    system = (
-        "Sen Jarvis'sin. Sesli konusuyorsun, bu yuzden kisa ve dogal cevap ver. "
-        "Madde isareti, kod blogu veya baslik kullanma. En fazla iki cumle."
-    )
-    for chunk in llm.stream([("system", system), ("human", prompt)]):
-        text = getattr(chunk, "content", "")
-        if text:
-            yield text
-
-
 def scripted_stream(reply: str, delta_delay: float = 0.02):
     """A stand-in for the LLM that streams at a plausible token rate."""
     for word in reply.split(" "):
@@ -108,8 +90,10 @@ def scripted_stream(reply: str, delta_delay: float = 0.02):
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--llm", action="store_true", help="use a real Ollama round trip")
-    parser.add_argument("--model", default=None, help="Ollama model (default: config.OLLAMA_MODEL)")
+    parser.add_argument("--llm", action="store_true", help="use a real LLM round trip")
+    parser.add_argument("--profile", default=None, choices=sorted(PROFILES),
+                        help="override hardware detection")
+    parser.add_argument("--model", default=None, help="override just the LLM model name")
     parser.add_argument("--runs", type=int, default=1, help="repeat each prompt N times")
     args = parser.parse_args()
 
@@ -117,22 +101,39 @@ def main() -> int:
     print("JARVIS VOICE LATENCY BENCHMARK")
     print("=" * 72)
 
+    hardware = detect()
+    profile = resolve(hardware, args.profile)
+    if args.model:
+        from dataclasses import replace as _replace
+
+        profile = _replace(profile, llm_model=args.model)
+    print()
+    print(hardware.summary())
+    print()
+    print(profile.describe())
+
+    settings = apply_to_voice_settings(profile, DEFAULT, hardware)
+
+    if args.llm:
+        available, problem = check_model_available(profile)
+        if not available:
+            print()
+            print(f"HATA: {problem}")
+            return 1
+
     load_start = time.perf_counter()
-    transcriber = Transcriber(DEFAULT.stt)
-    synth = Synthesizer(DEFAULT.tts, DEFAULT.models_dir)
+    transcriber = Transcriber(settings.stt)
+    synth = Synthesizer(settings.tts, settings.models_dir)
     synth.preload()
-    detector = SpeechDetector(DEFAULT.vad)
+    detector = SpeechDetector(settings.vad)
     transcriber.warmup()
     synth.synthesize_all("isinma", "tr")
     print(f"\nSTT : {transcriber.describe()}")
-    print(f"TTS : piper {DEFAULT.tts.voices} @ {synth.sample_rate} Hz")
-    print(f"VAD : silero, {DEFAULT.vad.min_silence_ms} ms endpoint silence")
+    print(f"TTS : piper {settings.tts.voices} @ {synth.sample_rate} Hz")
+    print(f"VAD : silero, {settings.vad.min_silence_ms} ms endpoint silence")
     print(f"Cold start (all models loaded + warmed): {time.perf_counter() - load_start:.1f} s\n")
 
-    model = args.model
-    if args.llm and model is None:
-        import config
-        model = config.OLLAMA_MODEL
+    llm = build_llm(profile) if args.llm else None
 
     totals: list[int] = []
     header = f"{'lang':<5} {'prompt':<38} {'STT':>7} {'LLM-1st':>9} {'TTS':>7} {'TOTAL':>8}"
@@ -152,11 +153,11 @@ def main() -> int:
             transcript = transcriber.transcribe(utterance, language=language)
             transcribed = time.perf_counter()
 
-            streamer = SentenceStreamer(DEFAULT.tts.min_sentence_chars)
+            streamer = SentenceStreamer(settings.tts.min_sentence_chars)
             first_token = 0.0
             first_audio = 0.0
             source = (
-                ollama_stream(transcript.text or prompt, model)
+                stream_reply(llm, transcript.text or prompt)
                 if args.llm else scripted_stream(REPLY)
             )
             try:
@@ -175,9 +176,21 @@ def main() -> int:
                         synth.synthesize_all(sentence, language)
                         first_audio = time.perf_counter()
                         break
+                # Drain the rest AFTER the clock has stopped. The timings above
+                # are already recorded, so this costs nothing measured - but
+                # leaving the stream unfinished makes the server keep
+                # generating, and the next iteration then measures its own
+                # queueing rather than the model. That artefact is what made
+                # every row report a near-identical ~3.7 s.
+                for _ in source:
+                    pass
             except Exception as exc:  # noqa: BLE001
                 print(f"{language:<5} {prompt[:38]:<38}   LLM error: {exc}")
                 continue
+            finally:
+                close = getattr(source, "close", None)
+                if close is not None:
+                    close()
 
             stt_ms = int((transcribed - speech_end) * 1000)
             llm_ms = int((first_token - transcribed) * 1000)
@@ -194,9 +207,9 @@ def main() -> int:
         print("-" * len(header))
         print(f"first audio  median {statistics.median(totals):.0f} ms   "
               f"min {min(totals)} ms   max {max(totals)} ms")
-        target = 1500
+        target = profile.expected_first_audio_ms if args.llm else 1500
         verdict = "PASS" if statistics.median(totals) <= target else "OVER BUDGET"
-        print(f"target <= {target} ms  ->  {verdict}")
+        print(f"hedef <= {target} ms ({profile.label})  ->  {verdict}")
         if not args.llm:
             print("\nNote: run with --llm for the real figure; the scripted stream "
                   "does not include model thinking time.")

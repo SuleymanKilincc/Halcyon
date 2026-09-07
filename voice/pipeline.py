@@ -204,8 +204,14 @@ class VoiceLoop:
         full_response: list[str] = []
 
         self._set_state(State.RESPONDING)
+        # Held by name so it can be closed explicitly below. Breaking out of a
+        # `for` over a generator does NOT release the resources it holds; for a
+        # streamed LLM response that leaves the server generating tokens nobody
+        # will read, and the next turn queues behind it. Barge-in takes this
+        # path every single time, so it is the normal case, not an edge case.
+        response_stream = self.handler(transcript)
         try:
-            for delta in self.handler(transcript):
+            for delta in response_stream:
                 if self._interrupted.is_set():
                     break
                 if not delta:
@@ -225,6 +231,10 @@ class VoiceLoop:
                     spoken_any = self._speak(sentence, language, timings) or spoken_any
         except Exception as exc:  # noqa: BLE001
             self.events.emit("on_error", exc)
+        finally:
+            close = getattr(response_stream, "close", None)
+            if close is not None:
+                close()
 
         if spoken_any and self.player is not None and not self._interrupted.is_set():
             self.player.wait_until_idle(timeout=120)
