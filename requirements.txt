@@ -1,51 +1,68 @@
-# Core LLM and Agent Framework
-langchain>=0.3.0
-langchain-ollama>=0.1.0
-langchain-community>=0.3.0
-langgraph>=0.2.0
+# Jarvis - Python bağımlılıkları
+#
+# Alt sınırlar bu makinede kurulu ve test edilmiş sürümlerdir. Önceki
+# requirements.txt LangChain 0.3 / LangGraph 0.2 diyordu ama kurulu olan
+# 1.x'ti; API'ler o arada değişti, dolayısıyla taban sürümler gerçeği
+# yansıtacak şekilde güncellendi.
 
-# Web Search and Scraping
-duckduckgo-search>=4.0.0
+# ---------------------------------------------------------------- LLM / Agent
+langchain>=1.3.0
+langchain-core>=1.4.0
+langchain-ollama>=1.1.0
+langchain-community>=0.4.0
+langgraph>=1.2.0
+
+# ------------------------------------------------------------ Ses (Faz 1)
+# Yerel STT: CTranslate2 tabanlı. GPU varsa CUDA'yı kendi kullanır.
+faster-whisper>=1.2.0
+# Uç noktalama (kullanıcı ne zaman sustu). torch'a bağlıdır.
+silero-vad>=6.2.0
+# Yerel TTS: ONNX, CPU'da ~20x gerçek zamanlı.
+piper-tts>=1.8.0
+# Mikrofon ve hoparlör (PortAudio).
+sounddevice>=0.5.0
+numpy>=1.26,<2
+
+# torch AYRI kurulmalıdır: PyPI'daki varsayılan paket Windows'ta CPU-only'dir.
+# CUDA'lı sürüm için:
+#   pip install --index-url https://download.pytorch.org/whl/cu126 torch torchaudio
+torch>=2.4.0
+
+# ---------------------------------------------------------------- Web / Araçlar
+duckduckgo-search>=8.0.0
 beautifulsoup4>=4.12.0
 requests>=2.31.0
 lxml>=4.9.0
+playwright>=1.60.0
 
-# Web Automation
-playwright>=1.40.0
-selenium>=4.15.0
-
-# Archive Handling
-py7zr>=0.20.0
+# ---------------------------------------------------------------- Dosya işlemleri
+py7zr>=1.1.0
 rarfile>=4.1
 
-# GUI Framework
-customtkinter>=5.2.0
+# ---------------------------------------------------------------- GUI
+customtkinter>=6.0.0
 pillow>=10.0.0
 
-# Voice Input (Speech Recognition)
-SpeechRecognition>=3.10.0
-pyaudio>=0.2.13
-
-# Voice Output (Text-to-Speech)
-pyttsx3>=2.90
-
-# Advanced Voice (Local)
-openai-whisper>=20230314
-torch>=2.0.0
-TTS>=0.22.0
-
-# Language Detection
-langdetect>=1.0.9
-
-# Database
+# ---------------------------------------------------------------- Veritabanı
 sqlalchemy>=2.0.0
 
-# Hardware Monitoring
-psutil>=5.9.0
+# ---------------------------------------------------------------- Donanım izleme
+psutil>=7.0.0
 GPUtil>=1.4.0
 wmi>=1.5.1
 
-# Utilities
+# ---------------------------------------------------------------- Yardımcılar
 python-dotenv>=1.0.0
 colorama>=0.4.6
 python-dateutil>=2.8.2
+langdetect>=1.0.9
+
+# ---------------------------------------------------------------- KULLANIMDAN KALDIRILDI
+# Aşağıdakiler Faz 1 ile yerlerini yenilerine bıraktı; hâlâ kuruluysalar
+# kaldırılabilirler.
+#   SpeechRecognition + pyaudio  -> sounddevice + silero-vad
+#   openai-whisper               -> faster-whisper (4-8x daha hızlı)
+#   pyttsx3                      -> piper-tts
+#   TTS (Coqui)                  -> piper-tts
+#     Coqui TTS 0.22 arşivlenmiş bir projedir ve torch 2.x ile uyumsuzdur.
+#   selenium                     -> playwright (zaten kullanılıyor)
