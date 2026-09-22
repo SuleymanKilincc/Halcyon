@@ -182,8 +182,34 @@ tek tek bozulmasını beklemiyor.
 |---|---|---|
 | Ne zaman | CUDA yok (iGPU / Eco mod) | dGPU açık, VRAM ≥ 7 GB |
 | STT | `base` @ CPU | `large-v3-turbo` @ CUDA |
-| LLM | `qwen3.5:2b`, ctx 4096 | `qwen3.5:9b`, ctx 16384 |
-| Beklenen ilk ses | ~2800 ms | ~900 ms (hedef) |
+| LLM | `qwen3.5:2b`, ctx 4096 | `qwen3.5:9b`, ctx 8192 |
+| Beklenen ilk ses | ~2800 ms | **~1400 ms (ölçüldü)** |
+
+### Tam güç modunda ölçülen (RTX 4060, ısınmış)
+
+| Aşama | Süre |
+|---|---|
+| STT (`large-v3-turbo` @ CUDA) | 234 - 377 ms |
+| LLM ilk token | 114 - 134 ms |
+| **Toplam ilk ses** | **1105 - 1573 ms** |
+
+Türkçe doğruluğu da beklendiği gibi düzeldi: "Sistem sıcaklığı nedir?"
+kelimesi kelimesine doğru çıkıyor — CPU'daki `base` modeli aynı cümleyi
+"BİVİ SAYA RIM'ın sıcaklığı kaç derece?" diye duyuyordu.
+
+### VRAM: context boyutu modelin nereye yükleneceğini belirliyor
+
+8 GB VRAM'de `qwen3.5:9b` için `ollama ps` ile ölçülen:
+
+| ctx | Yerleşim |
+|---|---|
+| 8192 | **%100 GPU** |
+| 12288 | %86 GPU / %14 CPU |
+| 16384 | %84 GPU / %16 CPU |
+
+En ufak taşma bile bazı katmanları CPU'ya atıyor ve üretimin tamamını CPU
+hızına çekiyor. Bu yüzden VRAM'e tam sığan küçük context, sığmayan büyük
+context'i yener. Profil 8192'ye sabitlendi.
 
 Ara bir profil daha var: `performance-lowvram` — dGPU var ama 7 GB'ın altında
 VRAM varsa hızlı STT'yi tutup LLM'i `qwen3.5:4b`'ye düşürüyor.

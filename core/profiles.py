@@ -80,11 +80,20 @@ PERFORMANCE = Profile(
     stt_device="cuda",
     stt_compute="int8_float16",
     llm_model="qwen3.5:9b",
-    # 262144 is the model's maximum, not a sensible runtime value: the KV cache
-    # for it would not fit beside the weights in 8 GB. 16k is ample for speech.
-    llm_num_ctx=16384,
+    # Measured on the 8 GB RTX 4060, via `ollama ps` after loading the model:
+    #   ctx  8192 -> 100% GPU
+    #   ctx 12288 ->  86% GPU / 14% CPU
+    #   ctx 16384 ->  84% GPU / 16% CPU
+    # Any spill puts transformer layers on the CPU and drags the whole
+    # generation down to CPU speed, so the largest context that still fits
+    # entirely in VRAM beats a nominally bigger one. 8k is ample for speech.
+    # (262144, the model's maximum, is a capability figure, not a runtime one.)
+    llm_num_ctx=8192,
     llm_num_predict=300,
-    expected_first_audio_ms=900,
+    # Measured on the RTX 4060 once warm: STT 234-377 ms, first token
+    # 114-134 ms, first audio 1105-1573 ms. The 900 ms here was a guess before
+    # the GPU was available; this is the observed figure.
+    expected_first_audio_ms=1400,
 )
 
 # A discrete GPU too small to hold the 9B weights plus a KV cache plus Whisper.
