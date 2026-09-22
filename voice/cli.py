@@ -28,6 +28,7 @@ from collections.abc import Iterator
 from core.hardware import detect
 from core.llm import build_llm, check_model_available, stream_reply
 from core.profiles import PROFILES, apply_to_voice_settings, resolve
+from core.voice_tools import describe_voice_tools, get_voice_tools
 from voice.pipeline import State, TurnTimings, VoiceEvents, VoiceLoop
 from voice.settings import DEFAULT
 from voice.stt import Transcript
@@ -48,8 +49,8 @@ def make_echo_handler():
     return handler
 
 
-def make_llm_handler(profile):  # noqa: ANN001
-    llm = build_llm(profile)
+def make_llm_handler(profile, tools):  # noqa: ANN001
+    llm = build_llm(profile, tools=tools)
     # Load the weights now. Otherwise the first thing the user says pays a
     # 3.7-6.7 s cold start and it looks like the assistant is broken.
     print(f"Model isitiliyor ({profile.llm_model})...")
@@ -58,7 +59,7 @@ def make_llm_handler(profile):  # noqa: ANN001
     def handler(transcript: Transcript) -> Iterator[str]:
         yield from stream_reply(llm, transcript.text)
 
-    return handler
+    return llm, handler
 
 
 def main() -> int:
@@ -74,6 +75,9 @@ def main() -> int:
     parser.add_argument("--input", default=None, help="input device index or name")
     parser.add_argument("--output", default=None, help="output device index or name")
     parser.add_argument("--no-barge-in", action="store_true", help="disable interruption")
+    parser.add_argument("--no-tools", action="store_true", help="disable tool calling")
+    parser.add_argument("--unsafe-tools", action="store_true",
+                        help="also expose the mutating tools (no approval layer yet)")
     args = parser.parse_args()
 
     if args.devices:
@@ -104,14 +108,26 @@ def main() -> int:
     if args.no_barge_in:
         settings.barge_in.enabled = False
 
+    llm = None
+    tools = []
     if args.llm:
         available, problem = check_model_available(profile)
         if not available:
             print(f"HATA: {problem}")
             return 1
-        handler = make_llm_handler(profile)
+        if not args.no_tools:
+            tools = get_voice_tools(include_gated=args.unsafe_tools)
+            print(f"Arac: {describe_voice_tools(include_gated=args.unsafe_tools)}")
+        llm, handler = make_llm_handler(profile, tools)
     else:
         handler = make_echo_handler()
+
+    def on_speech_start() -> None:
+        # The GPU drops into a low-power state when idle and costs ~2 s to
+        # wake. Firing the wake-up here means it overlaps with the user still
+        # speaking rather than landing on top of their answer.
+        if llm is not None:
+            llm.prewarm()
 
     def on_state(state: State) -> None:
         label = STATE_LABEL.get(state, "")
@@ -140,6 +156,7 @@ def main() -> int:
         print(f"\r\033[91mHata:\033[0m {exc}")
 
     events = VoiceEvents(
+        on_speech_start=on_speech_start,
         on_state=on_state,
         on_user=on_user,
         on_response_done=on_done,
