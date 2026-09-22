@@ -76,33 +76,20 @@ Ses hattının kendisi (STT + VAD + TTS) her koşulda hazır ve hızlı;
 
 ## GPU
 
-`torch.cuda.is_available()` şu an `False`. Sebebi sürücü ya da torch değil:
-Windows RTX 4060'ı hiç görmüyor.
+**Durum: çalışıyor.** `torch.cuda.is_available()` → `True`,
+`NVIDIA GeForce RTX 4060 Laptop GPU (8.0 GB VRAM)`, profil `performance`.
 
-```
-NVIDIA GeForce RTX 4060 Laptop GPU
-Status: Unknown | Present: False
-"Currently, this hardware device is not connected to the computer. (Code 45)"
-```
+Bir süre çalışmıyordu ve sebebi arıza değildi: dizüstü, pil ömrü için
+G-Helper'dan **iGPU (Eco) moduna** alınmıştı. O modda dGPU PCI veriyolundan
+tamamen ayrılır ve Windows cihazı "Kod 45 — bağlı değil" diye raporlar;
+`Win32_VideoController` yalnızca AMD Radeon tümleşik grafikleri listeler.
+NVIDIA sürücüleri, `nvcuda.dll` ve `nvml.dll` kurulu olduğu için sorun
+yazılım katmanında aranmaya müsaitti — değildi.
 
-`Win32_VideoController` yalnızca AMD Radeon tümleşik grafikleri listeliyor.
-NVIDIA sürücüleri, `nvcuda.dll` ve `nvml.dll` kurulu — eksik olan cihazın
-kendisi.
-
-**Sebep bir arıza değil, bilinçli bir ayar:** dizüstü, pil ömrü için
-**G-Helper üzerinden iGPU (Eco) moduna** alınmış. Bu modda dGPU PCI
-veriyolundan tamamen ayrılır, dolayısıyla Kod 45 beklenen davranıştır.
-
-GPU'yu kullanmak için G-Helper'da **Standard** (veya Optimus/Auto) moda geçip
-**yeniden başlatmak** gerekir; şarja takılı olmak da önerilir.
-
-Düzeldiğinde yapılacak tek şey yok — kod zaten otomatik algılıyor:
-
-* `voice/stt.py` cihazı `auto` çözümlüyor, CUDA görürse `large-v3-turbo`'ya
-  kendiliğinden geçiyor (`int8_float16`, ~1.6 GB VRAM).
-* Ollama da GPU'yu kendiliğinden kullanır.
-
-Beklenen: STT ~500 ms → ~200 ms **ve** belirgin biçimde daha doğru Türkçe.
+G-Helper'da **Standard** moda geçip yeniden başlatmak yeterli oldu. Kod
+tarafında yapılacak bir şey yok; `core/hardware.py` durumu algılıyor,
+`core/profiles.py` profili kendiliğinden değiştiriyor. Tekrar Eco moda
+geçilirse `battery` profiline sorunsuz düşer ve sebebini ekrana yazar.
 
 ## Model seçimi: hız ve doğruluk
 
