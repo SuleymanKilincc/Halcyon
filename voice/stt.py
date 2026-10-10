@@ -40,6 +40,27 @@ class Transcript:
         return not self.text.strip()
 
 
+def load_cuda_runtime() -> None:
+    """
+    Make the CUDA math libraries (cuBLAS, cuDNN) loadable for CTranslate2.
+
+    faster-whisper does not ship cuBLAS or cuDNN; on Windows it finds them only
+    if something has already loaded them into the process. PyTorch's CUDA build
+    bundles exactly those DLLs and loads them on import. Without this call, GPU
+    transcription fails with "cublas64_12.dll is not found" - and it used to
+    work only by accident, because some other module happened to import torch
+    first. Calling it explicitly makes the dependency visible and independent
+    of import order.
+    """
+    try:
+        import torch  # noqa: F401  (imported for its side effect)
+    except ImportError as exc:
+        raise RuntimeError(
+            "GPU speech recognition needs the CUDA libraries that come with "
+            "PyTorch's CUDA build, and torch is not installed."
+        ) from exc
+
+
 def resolve_device(requested: str) -> str:
     if requested != "auto":
         return requested
@@ -74,6 +95,8 @@ class Transcriber:
         self.settings = settings or STTSettings()
         self.device = resolve_device(self.settings.device)
         self.model_name = resolve_model(self.settings.model, self.device)
+        if self.device == "cuda":
+            load_cuda_runtime()
         self.compute_type = (
             self.settings.compute_type_cuda if self.device == "cuda"
             else self.settings.compute_type_cpu
