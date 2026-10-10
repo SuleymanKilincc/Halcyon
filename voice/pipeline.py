@@ -22,14 +22,21 @@ import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from enum import Enum, auto
+from typing import TYPE_CHECKING
 
 import numpy as np
 
-from voice.audio import MicStream, Player
 from voice.settings import DEFAULT, VoiceSettings
 from voice.stt import Transcriber, Transcript
 from voice.tts import SentenceStreamer, Synthesizer
 from voice.vad import BargeInDetector, SpeechDetector, VADEvent
+
+if TYPE_CHECKING:
+    # Only for type annotations. The audio module loads PortAudio at import
+    # time, so importing it here would make even TurnTimings - plain
+    # arithmetic - unusable on a machine without sound drivers, such as a
+    # CI runner. It is imported where audio is actually opened instead.
+    from voice.audio import MicStream, Player
 
 # A handler receives the user's transcript and yields response text as it is
 # produced. Yielding a single string at the end also works; it just gives up
@@ -138,6 +145,8 @@ class VoiceLoop:
         """
         self.transcriber.warmup()
         self.synthesizer.preload()
+        from voice.audio import Player
+
         self.player = Player(self.synthesizer.sample_rate, self.settings.output_device)
         self.player.start()
 
@@ -150,6 +159,8 @@ class VoiceLoop:
     def run(self) -> None:
         if self.player is None:
             self.prepare()
+
+        from voice.audio import MicStream
 
         with MicStream(self.settings.input_device) as mic:
             self._set_state(State.LISTENING)

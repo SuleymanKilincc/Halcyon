@@ -1,0 +1,36 @@
+# Runs the automated test suite on every push and pull request.
+#
+# The tests need no microphone, GPU or Ollama server: hardware and the model
+# server are replaced by fakes, so a plain cloud runner is enough. Two
+# operating systems, because Jarvis is developed on Windows but its logic
+# should not depend on it.
+name: tests
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / Python 3.10
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false        # report both platforms even if one fails
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.10"
+          cache: pip
+          cache-dependency-path: requirements-test.txt
+
+      - name: Install test dependencies
+        run: pip install -r requirements-test.txt
+
+      - name: Run tests
+        run: pytest
