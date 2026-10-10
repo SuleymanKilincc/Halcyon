@@ -1,5 +1,7 @@
 # Jarvis
 
+[![tests](https://github.com/SuleymanKilincc/Jarvis/actions/workflows/tests.yml/badge.svg)](https://github.com/SuleymanKilincc/Jarvis/actions/workflows/tests.yml)
+
 **A fully local, voice-driven AI assistant.** You speak, it answers out loud — in Turkish or English — and nothing leaves your machine.
 
 Jarvis listens continuously, notices when you stop talking, transcribes your speech, thinks with a local language model, can call tools on your computer, and starts speaking its answer before it has finished generating it. You can interrupt it mid-sentence. It detects whether your laptop's discrete GPU is available and picks a matching set of models on its own.
@@ -135,12 +137,25 @@ python -m voice.cli --devices       # list audio devices, then pass --input / --
 
 Then just talk. There is no button.
 
+## Tests
+
+```bash
+pip install -r requirements-test.txt
+pytest
+```
+
+47 tests, about one second, and **no microphone, GPU or Ollama server required**: the hardware and the model server are replaced by fakes, so what gets tested is the project's own logic — sentence splitting, profile selection, the end-of-speech state machine, the tool-calling loop and conversation memory. They run on every push on Ubuntu and Windows via GitHub Actions.
+
+The tests were checked by deliberately breaking the code: a one-character change to a threshold, and reverting a past bug fix, each turned exactly the right test red.
+
 ## Project structure
 
 ```
 core/               hardware detection, runtime profiles, LLM client, voice tool list
 voice/              the speech pipeline: VAD, STT, TTS, audio I/O, turn state machine, CLI
 bench/latency.py    microphone-free latency benchmark
+tests/              automated tests (pytest)
+scripts/manual/     interactive checks that need a human (audio, windows, keyboard input)
 tools.py            tool implementations (files, terminal, web, browser, archives, hardware)
 agent.py            text-mode agent with the full tool set (LangGraph)
 gui.py              desktop UI (still on the legacy voice pipeline)
