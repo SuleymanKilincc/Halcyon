@@ -26,7 +26,8 @@ import sys
 from collections.abc import Iterator
 
 from core.hardware import detect
-from core.llm import build_llm, check_model_available, stream_reply
+from core.fit import fit_to_gpu
+from core.llm import build_llm, check_model_available, installed_models, stream_reply
 from core.profiles import PROFILES, apply_to_voice_settings, resolve
 from core.voice_tools import describe_voice_tools, get_voice_tools
 from voice.pipeline import State, TurnTimings, VoiceEvents, VoiceLoop
@@ -93,7 +94,10 @@ def main() -> int:
         return 0
 
     hardware = detect()
-    profile = resolve(hardware, args.profile)
+    # Only consider models that are actually pulled, so a large card does not
+    # pick one that is not there (it is suggested instead).
+    installed = installed_models() if args.llm else None
+    profile = resolve(hardware, args.profile, installed=installed)
     if args.model:
         from dataclasses import replace
 
@@ -125,6 +129,11 @@ def main() -> int:
             tools = get_voice_tools(include_gated=args.unsafe_tools)
             print(f"Tools: {describe_voice_tools(include_gated=args.unsafe_tools)}")
         llm, handler = make_llm_handler(profile, tools)
+        # The plan was chosen from measured sizes; confirm the card agrees.
+        profile = fit_to_gpu(llm, profile, installed)
+        # A step down may also have changed the speech model; Whisper is
+        # loaded only after this point, so the settings can still follow.
+        settings = apply_to_voice_settings(profile, settings, hardware)
     else:
         handler = make_echo_handler()
 

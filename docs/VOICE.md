@@ -60,7 +60,7 @@ The microphone stays open while Jarvis speaks. A separate, stricter detector (th
 
 ## Measurements
 
-### Performance profile (GPU)
+### GPU: RTX 4060 Laptop, 8 GB (`gpu-9b-8k`)
 
 | Stage | Time |
 |---|---|
@@ -110,15 +110,39 @@ Detection runs per utterance and is restricted to the languages Jarvis has voice
 
 **Limitation:** mixing languages inside one sentence (Turkish with English technical terms, as developers often speak) is transcribed as a single language. Switching language between sentences works.
 
-## Hardware profiles
+## Choosing models for the GPU
 
-| | `battery` | `performance` | `performance-lowvram` |
-|---|---|---|---|
-| When | no CUDA device | GPU with ≥ 7 GB VRAM | GPU with < 7 GB VRAM |
-| Speech-to-text | `base` on CPU | `large-v3-turbo` on CUDA | `large-v3-turbo` on CUDA |
-| Language model | `qwen3.5:2b`, 4k context | `qwen3.5:9b`, 8k context | `qwen3.5:4b`, 8k context |
+### Measured memory use
 
-The profile is chosen once at startup and can be forced with `--profile` or the `JARVIS_PROFILE` environment variable.
+From `python -m bench.vram` on the 8 GB card (GiB):
+
+| Component | 4k | 8k | 16k | 32k |
+|---|---|---|---|---|
+| qwen3.5:2b | 2.19 | 2.30 | 2.41 | 2.55 |
+| qwen3.5:4b | 2.91 | 3.04 | 3.38 | 3.82 |
+| qwen3.5:9b | 5.11 | 5.24 | 6.10 | 6.74 |
+
+| Speech model (int8_float16) | GiB |
+|---|---|
+| Whisper base | 0.19 |
+| Whisper small | 0.29 |
+| Whisper large-v3-turbo | 1.01 |
+
+The desktop and other programs held 0.83–0.92 GiB with nothing of ours loaded, leaving ~7.1 GiB free on the 8 GB card. The 27B model has not been downloaded; its figures in `core/vram.py` are scaled from the 9B ones and marked as estimates.
+
+### Plan, then verify
+
+`core/vram.py` walks a ladder of configurations from best to smallest and picks the first whose language model + speech model + a 0.5 GiB headroom fits the free memory. The headroom exists because Ollama decides placement with a larger internal estimate than the size it reports: with ~7.1 GiB free, the 9B model at 16k (6.10 GiB reported) still spilled onto the CPU. The value was calibrated so the planner accepts the configuration observed to run fully on the GPU here (9B at 8k with the large Whisper) and rejects the one observed to spill.
+
+Because that headroom is not documented and was not fully predictable, the plan is only a first guess. `core/fit.py` then asks Ollama (`/api/ps`) how much of the loaded model is on the GPU; if any of it spilled, it unloads the model and steps down one rung. Forced onto 9B at 16k on the 8 GB card, it reported *"only 84% on the GPU"* — the same split measured by hand earlier — and settled on 9B at 8k at 100%.
+
+The language model is loaded and checked before Whisper, so a step down can still switch to a smaller speech model.
+
+The profile can be forced with `--profile` (`auto`, `battery`, or any configuration name such as `gpu-4b-8k`) or the `JARVIS_PROFILE` environment variable.
+
+### GPU speech recognition needs PyTorch's CUDA libraries
+
+faster-whisper (CTranslate2) does not ship cuBLAS or cuDNN; on Windows it finds them only if they are already loaded in the process. PyTorch's CUDA build bundles them and loads them on import. For a long time GPU transcription worked only because some other module happened to import torch first — measuring Whisper on its own failed with *"cublas64_12.dll is not found"*. `voice/stt.py` now imports torch explicitly before loading Whisper on the GPU.
 
 ### A switched-off GPU is not a missing GPU
 
@@ -179,9 +203,12 @@ This also explains an early benchmark that reported a near-identical ~3.7 s on e
 | `voice/cli.py` | Terminal front end |
 | `core/hardware.py` | GPU, VRAM, battery and CPU detection |
 | `core/profiles.py` | Runtime profiles and their selection |
+| `core/vram.py` | Measured memory use, configuration ladder, VRAM planner |
+| `core/fit.py` | Checks placement after loading and steps down on a spill |
 | `core/llm.py` | Streaming client, tool loop, memory, persona, GPU pre-warming |
 | `core/voice_tools.py` | Which tools may be called by voice |
 | `bench/latency.py` | Microphone-free latency benchmark |
+| `bench/vram.py` | Measures GPU memory use per model and context length |
 
 ## Not done yet
 

@@ -14,7 +14,7 @@ Jarvis listens continuously, notices when you stop talking, transcribes your spe
 - **Turkish and English** — the language is detected per utterance; the reply voice switches with it.
 - **Tool calling** — lists directories, reads files, reports system temperatures, searches the web. Verified against real output, not just prompted to claim it.
 - **Conversation memory** — follow-up questions like *"how many were there?"* resolve against earlier turns.
-- **Hardware-aware profiles** — full-size models on the GPU when it is available, lightweight models on the CPU when the laptop runs on battery.
+- **Adapts to the GPU** — picks the largest models that fit the card's free memory, checks after loading that nothing spilled onto the CPU, and steps down on its own if it did. Lightweight CPU models when no GPU is available.
 
 ## Measured performance
 
@@ -51,20 +51,41 @@ flowchart TD
 4. **The sentence splitter** hands each completed sentence to the speech synthesiser while the rest of the answer is still being generated.
 5. **Text-to-speech** plays it back. The microphone keeps listening, so you can interrupt.
 
-### Hardware-aware profiles
+### Adapting to the GPU
+
+Jarvis runs two models on the same card — Whisper for speech and a language model through Ollama — and the right pair depends on how much memory is free. A fixed rule cannot serve both a 4 GB and a 32 GB card: the first overflows, the second sits mostly idle. So the choice is made in two layers:
 
 ```mermaid
-flowchart LR
+flowchart TD
     START([Jarvis starts]) --> CUDA{CUDA available?}
-    CUDA -- yes --> VRAM{VRAM ≥ 7 GB?}
-    VRAM -- yes --> PERF["performance<br/>Whisper large-v3-turbo + qwen3.5:9b"]
-    VRAM -- no --> LOW["performance-lowvram<br/>Whisper large-v3-turbo + qwen3.5:4b"]
     CUDA -- no --> OFF{"Discrete GPU present<br/>but switched off?"}
-    OFF -- yes --> WARN["battery + a hint to<br/>re-enable the GPU"]
-    OFF -- no --> BAT["battery<br/>Whisper base + qwen3.5:2b on CPU"]
+    OFF -- yes --> WARN["CPU profile + a hint<br/>to re-enable the GPU"]
+    OFF -- no --> BAT["CPU profile<br/>Whisper base + qwen3.5:2b"]
+    CUDA -- yes --> FREE["Read free VRAM<br/>(nvidia-smi)"]
+    FREE --> PLAN["Plan: best configuration whose<br/>measured memory fits"]
+    PLAN --> LOAD["Load the language model"]
+    LOAD --> ASK{"Ask Ollama: is all of it<br/>on the GPU?"}
+    ASK -- yes --> RUN([Run])
+    ASK -- "no, it spilled" --> DOWN["Unload, step down<br/>one configuration"]
+    DOWN --> LOAD
 ```
 
-On laptops the discrete GPU can be powered off entirely (for example in an "Eco" GPU mode). Python's usual hardware queries then report *no GPU at all*. Jarvis asks Windows directly (`Get-PnpDevice`), which can tell *"installed but disconnected"* apart from *"absent"* — so it explains why it is running slowly instead of silently degrading.
+1. **Plan.** Every component's memory use was measured (`python -m bench.vram`), and the planner picks the best configuration that fits the card's *free* memory, from a ladder ordered by preference: a larger language model first, then the large Whisper (the small ones are poor at Turkish), then a longer context.
+2. **Verify.** Ollama keeps more headroom than the sizes it reports, and how much is not documented — so a plan can fit on paper and still spill. After loading, Jarvis asks Ollama how much of the model actually landed on the GPU, and steps down if any of it spilled. This is what makes it correct on cards that were never tested: forced onto a configuration known to spill on the 8 GB card, it detected *"only 84% on the GPU"* and stepped down on its own.
+
+What the planner chooses for typical cards (free memory after the desktop's share):
+
+| Card | Language model | Context | Speech model |
+|---|---|---|---|
+| RTX 3050, 4 GB | qwen3.5:2b | 8k | Whisper small |
+| RTX 3060 Laptop, 6 GB | qwen3.5:4b | 8k | Whisper large-v3-turbo |
+| **RTX 4060 Laptop, 8 GB** | **qwen3.5:9b** | **8k** | **Whisper large-v3-turbo** |
+| RTX 3060 / 4080, 12–16 GB | qwen3.5:9b | 32k | Whisper large-v3-turbo |
+| RTX 4090 / 5090, 24–32 GB | qwen3.5:27b | 32k | Whisper large-v3-turbo |
+
+Only the 8 GB configuration (bold) has been run end to end. The others are the planner's choices from measured component sizes; the 27B figures are estimates because that model has not been downloaded on the development machine, and the verification step corrects any of them on real hardware. If a better model would fit but is not installed, Jarvis uses the best installed one and says which to pull.
+
+On laptops the discrete GPU can also be powered off entirely (for example in an "Eco" GPU mode). Python's usual hardware queries then report *no GPU at all*. Jarvis asks Windows directly (`Get-PnpDevice`), which tells *"installed but disconnected"* apart from *"absent"*, so it explains why it is on the CPU instead of silently degrading.
 
 ## Engineering notes
 
@@ -72,6 +93,7 @@ A few problems that shaped the design. Details and raw measurements are in [`doc
 
 - **A bigger context window was slower.** At a 16k-token context the 9B model no longer fit in 8 GB of VRAM; Ollama placed 16% of it on the CPU, which dragged every token down to CPU speed. At 8k it runs 100% on the GPU. The setting that fits beats the setting that is nominally larger.
 - **The benchmark said 140 ms, real use said 2.2 s.** Both were right. The benchmark sent requests back to back; a person pauses to speak and listen, and in that gap the laptop GPU drops into a low-power state that costs ~2 s to leave. The fix moves the wake-up to the moment you *start* speaking, so it overlaps with time that is already being spent.
+- **GPU speech recognition worked by accident.** faster-whisper finds NVIDIA's cuBLAS library only if something has already loaded it, and PyTorch happened to be imported first. Measuring Whisper's memory in isolation crashed with *"cublas64_12.dll is not found"*. The dependency is now explicit instead of depending on import order.
 - **The measuring tool was measuring itself.** An early benchmark reported a near-identical ~3.7 s on every input. It was abandoning each response stream after the first sentence while the server kept generating, so every measurement queued behind the previous one. Suspiciously uniform numbers turned out to be the clue.
 
 ## Tech stack
@@ -97,6 +119,7 @@ python -m voice.cli --info          # show detected hardware and the chosen prof
 python -m voice.cli                 # echo mode: test your microphone and speakers, no LLM
 python -m voice.cli --llm           # talk to Jarvis
 python -m voice.cli --llm --profile battery   # force the CPU profile
+python -m voice.cli --llm --profile gpu-4b-8k # force a specific GPU configuration
 python -m voice.cli --devices       # list audio devices, then pass --input / --output
 ```
 
@@ -109,16 +132,16 @@ pip install -r requirements-test.txt
 pytest
 ```
 
-47 tests, about one second, and **no microphone, GPU or Ollama server required**: the hardware and the model server are replaced by fakes, so what gets tested is the project's own logic — sentence splitting, profile selection, the end-of-speech state machine, the tool-calling loop and conversation memory. They run on every push on Ubuntu and Windows via GitHub Actions.
+84 tests, about one second, and **no microphone, GPU or Ollama server required**: the hardware and the model server are replaced by fakes, so what gets tested is the project's own logic — sentence splitting, profile selection, the VRAM planner (including what it would choose for cards from 4 to 32 GB), the spill-and-step-down loop, the end-of-speech state machine, the tool-calling loop and conversation memory. They run on every push on Ubuntu and Windows via GitHub Actions.
 
 The tests were checked by deliberately breaking the code: a one-character change to a threshold, and reverting a past bug fix, each turned exactly the right test red.
 
 ## Project structure
 
 ```
-core/               hardware detection, runtime profiles, LLM client, voice tool list
+core/               hardware detection, VRAM planner, placement check, LLM client, voice tools
 voice/              the speech pipeline: VAD, STT, TTS, audio I/O, turn state machine, CLI
-bench/latency.py    microphone-free latency benchmark
+bench/              latency.py (microphone-free latency), vram.py (memory use per model)
 tests/              automated tests (pytest)
 scripts/manual/     interactive checks that need a human (audio, windows, keyboard input)
 tools.py            tool implementations (files, terminal, web, browser, archives, hardware)
@@ -136,7 +159,8 @@ Stated plainly, because they matter if you try it:
 - **Voice can only use read-only tools.** Writing files, deleting files and running shell commands are deliberately disabled by voice until a spoken confirmation layer exists. A misheard sentence should never reach a destructive tool.
 - **No echo cancellation** — use headphones.
 - **The desktop UI still uses the old pipeline**; the new one runs from the terminal.
-- **The profile is chosen once at startup.** Unplugging mid-session does not switch it.
+- **The configuration is chosen once at startup.** Unplugging mid-session does not switch it.
+- **Only the 8 GB GPU configuration has been run end to end**; the others are planned from measured sizes and verified at load time.
 - **Mixed-language sentences** (Turkish with English terms inside one sentence) are transcribed as a single language.
 - **Voice conversations are not persisted** yet; memory lasts for the session.
 - A 9B local model is far weaker than frontier cloud models at multi-step reasoning, and can make things up.

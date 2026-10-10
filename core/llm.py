@@ -42,6 +42,8 @@ from __future__ import annotations
 import json
 import threading
 import time
+import urllib.error
+import urllib.request
 from collections.abc import Iterator
 from typing import Any
 
@@ -100,6 +102,7 @@ class SpeechLLM:
 
         self.profile = profile
         self.model = profile.llm_model
+        self.base_url = base_url
         self.system = system
         self.history_turns = history_turns
         self._client = ollama.Client(host=base_url)
@@ -122,6 +125,36 @@ class SpeechLLM:
     def reset(self) -> None:
         """Forget the conversation, keep the loaded model."""
         self._history.clear()
+
+    def reconfigure(self, profile: Profile) -> None:
+        """Switch to another model or context length; the conversation is kept."""
+        self.profile = profile
+        self.model = profile.llm_model
+        self._options["num_ctx"] = profile.llm_num_ctx
+        self._options["num_predict"] = profile.llm_num_predict
+
+    def placement(self) -> tuple[float, float] | None:
+        """
+        (GB the model needs, GB of it actually on the GPU), from Ollama.
+
+        None if the model is not loaded or Ollama cannot be asked.
+        """
+        try:
+            with urllib.request.urlopen(f"{self.base_url}/api/ps", timeout=5) as response:
+                loaded = json.load(response).get("models", [])
+        except Exception:  # noqa: BLE001 - a failed check must not stop the assistant
+            return None
+        for entry in loaded:
+            if entry.get("name") == self.model:
+                return entry.get("size", 0) / 1024**3, entry.get("size_vram", 0) / 1024**3
+        return None
+
+    def unload(self) -> None:
+        """Ask Ollama to drop this model from memory now."""
+        try:
+            self._client.generate(model=self.model, prompt="", keep_alive=0)
+        except Exception:  # noqa: BLE001
+            pass
 
     def warmup(self) -> None:
         """
@@ -314,6 +347,19 @@ def build_llm(profile: Profile, *, temperature: float = 0.4, base_url: str | Non
 def stream_reply(llm: SpeechLLM, prompt: str, system: str | None = None,
                  language: str | None = None) -> Iterator[str]:
     return llm.stream(prompt, system, language)
+
+
+def installed_models(base_url: str | None = None) -> set[str] | None:
+    """Names of the models pulled into Ollama, or None if Ollama is unreachable."""
+    if base_url is None:
+        import config
+
+        base_url = config.OLLAMA_BASE_URL
+    try:
+        with urllib.request.urlopen(f"{base_url}/api/tags", timeout=5) as response:
+            return {model.get("name", "") for model in json.load(response).get("models", [])}
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def check_model_available(profile: Profile, *, base_url: str | None = None) -> tuple[bool, str]:

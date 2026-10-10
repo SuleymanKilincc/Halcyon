@@ -8,7 +8,8 @@ first, the whole stack picks a coherent set of models up front:
 * **battery**     — iGPU / CPU only. Smaller models everywhere. The goal is
                     that Jarvis stays *usable* on battery, not that it stays
                     identical.
-* **performance** — discrete GPU available. Full-size STT and the 9B model.
+* **gpu-<model>-<context>** — a discrete GPU is available. Which models and
+                    context length depends on the free VRAM; see core/vram.py.
 
 The profile is resolved from detected hardware at startup and can always be
 overridden, because "what the hardware can do" and "what the user wants it to
@@ -21,6 +22,7 @@ import os
 from dataclasses import dataclass, replace
 
 from core.hardware import Hardware, detect
+from core.vram import DEFAULT_RESERVED_GIB, LADDER, PLANS_BY_NAME, Plan, choose
 
 
 @dataclass(frozen=True)
@@ -49,7 +51,8 @@ class Profile:
             f"  STT : {self.stt_model} @ {self.stt_device} ({self.stt_compute})\n"
             f"  LLM : {self.llm_model}, ctx {self.llm_num_ctx}"
             f"{'' if self.llm_reasoning else ', thinking off'}\n"
-            f"  expected first audio: ~{self.expected_first_audio_ms} ms"
+            + (f"  expected first audio: ~{self.expected_first_audio_ms} ms"
+               if self.expected_first_audio_ms else "  expected first audio: not measured yet")
             + (f"\n  reason: {self.reason}" if self.reason else "")
         )
 
@@ -73,67 +76,62 @@ BATTERY = Profile(
     expected_first_audio_ms=2800,
 )
 
-PERFORMANCE = Profile(
-    name="performance",
-    label="Performance",
-    stt_model="large-v3-turbo",
-    stt_device="cuda",
-    stt_compute="int8_float16",
-    llm_model="qwen3.5:9b",
-    # Measured on the 8 GB RTX 4060, via `ollama ps` after loading the model:
-    #   ctx  8192 -> 100% GPU
-    #   ctx 12288 ->  86% GPU / 14% CPU
-    #   ctx 16384 ->  84% GPU / 16% CPU
-    # Any spill puts transformer layers on the CPU and drags the whole
-    # generation down to CPU speed, so the largest context that still fits
-    # entirely in VRAM beats a nominally bigger one. 8k is ample for speech.
-    # (262144, the model's maximum, is a capability figure, not a runtime one.)
-    llm_num_ctx=8192,
-    llm_num_predict=300,
-    # Measured on the RTX 4060 once warm: STT 234-377 ms, first token
-    # 114-134 ms, first audio 1105-1573 ms. The 900 ms here was a guess before
-    # the GPU was available; this is the observed figure.
-    expected_first_audio_ms=1400,
-)
-
-# A discrete GPU too small to hold the 9B weights plus a KV cache plus Whisper.
-# Keeps the fast STT, drops back to the smaller language model.
-PERFORMANCE_LOW_VRAM = replace(
-    PERFORMANCE,
-    name="performance-lowvram",
-    label="Performance (low VRAM)",
-    llm_model="qwen3.5:4b",
-    llm_num_ctx=8192,
-    expected_first_audio_ms=700,
-)
-
-PROFILES: dict[str, Profile] = {
-    p.name: p for p in (BATTERY, PERFORMANCE, PERFORMANCE_LOW_VRAM)
+# Expected first-audio latency for configurations that have actually been
+# measured end to end. Other GPU configurations report "not measured yet"
+# rather than an invented number.
+MEASURED_FIRST_AUDIO_MS = {
+    "gpu-9b-8k": 1400,   # RTX 4060 Laptop, 8 GB: 1105-1573 ms observed
 }
 
-# Below this, the 9B model and a Whisper checkpoint cannot share the card.
-MIN_VRAM_FOR_9B_GB = 7.0
+
+def profile_from_plan(plan: Plan, reason: str = "") -> Profile:
+    """Turn a VRAM plan into a runtime profile."""
+    size = plan.llm_model.split(":")[1]
+    return Profile(
+        name=plan.name,
+        label=f"GPU ({size} model, {plan.num_ctx // 1024}k context)",
+        reason=reason,
+        stt_model=plan.stt_model,
+        stt_device="cuda",
+        stt_compute="int8_float16",
+        llm_model=plan.llm_model,
+        llm_num_ctx=plan.num_ctx,
+        # Small models wander when given room; keep their replies short.
+        llm_num_predict=160 if size in ("2b", "4b") else 300,
+        expected_first_audio_ms=MEASURED_FIRST_AUDIO_MS.get(plan.name, 0),
+    )
 
 
-def resolve(hardware: Hardware | None = None, override: str | None = None) -> Profile:
+# The configuration measured on the development machine; also a convenient
+# fixed profile for tests and for forcing a known setup.
+PERFORMANCE = profile_from_plan(PLANS_BY_NAME["gpu-9b-8k"])
+
+PROFILES: dict[str, Profile] = {
+    BATTERY.name: BATTERY,
+    **{plan.name: profile_from_plan(plan) for plan in LADDER},
+}
+
+
+def resolve(hardware: Hardware | None = None, override: str | None = None,
+            installed: set[str] | None = None) -> Profile:
     """
     Pick the profile this machine should run.
 
     ``override`` (or the ``JARVIS_PROFILE`` environment variable) wins over
-    detection, so a user on mains power who wants the quiet, cool machine can
-    have it, and a debugging session can force either path.
+    detection. ``installed`` is the set of models already pulled into Ollama;
+    when given, the GPU plan only uses those, and suggests a better model if
+    the card could run one.
     """
     hardware = hardware or detect()
     override = override or os.getenv("JARVIS_PROFILE")
 
-    if override:
+    if override and override.strip().lower() != "auto":
         key = override.strip().lower()
         if key not in PROFILES:
             raise ValueError(
-                f"Unknown profile {override!r}. Choices: {', '.join(PROFILES)}"
+                f"Unknown profile {override!r}. Choices: auto, {', '.join(PROFILES)}"
             )
-        chosen = PROFILES[key]
-        return replace(chosen, reason="chosen manually (JARVIS_PROFILE / --profile)")
+        return replace(PROFILES[key], reason="chosen manually (JARVIS_PROFILE / --profile)")
 
     if not hardware.cuda:
         if hardware.dgpu_disconnected:
@@ -145,13 +143,28 @@ def resolve(hardware: Hardware | None = None, override: str | None = None) -> Pr
             reason = "no CUDA device found"
         return replace(BATTERY, reason=reason)
 
-    if hardware.vram_gb < MIN_VRAM_FOR_9B_GB:
-        return replace(
-            PERFORMANCE_LOW_VRAM,
-            reason=f"{hardware.vram_gb:.1f} GB VRAM is too little for the 9B model",
-        )
+    free = hardware.vram_free_gb
+    if free is None:
+        free = max(0.0, hardware.vram_gb - DEFAULT_RESERVED_GIB)
+        free_note = f"~{free:.1f} GB free (estimated)"
+    else:
+        free_note = f"{free:.1f} GB free"
 
-    return replace(PERFORMANCE, reason=f"{hardware.gpu_name} is available")
+    plan, best = choose(free, installed)
+    if plan is None:
+        if best is not None:
+            reason = (f"{free_note}, but no model that fits is installed - "
+                      f"pull one with: ollama pull {best.llm_model}")
+        else:
+            reason = f"{free_note} on {hardware.gpu_name}: too little for any GPU configuration"
+        return replace(BATTERY, reason=reason)
+
+    reason = f"{free_note} on {hardware.gpu_name}"
+    if plan.estimated:
+        reason += "; memory use of this model is estimated, verified after loading"
+    if best is not None and best != plan:
+        reason += f"; this card could run {best.name} - ollama pull {best.llm_model}"
+    return profile_from_plan(plan, reason)
 
 
 def apply_to_voice_settings(profile: Profile, settings=None, hardware=None):  # noqa: ANN001

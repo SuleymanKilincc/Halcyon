@@ -9,14 +9,7 @@ the whole trick: no GPU is needed to test what happens when there is one.
 import pytest
 
 from core.hardware import Hardware
-from core.profiles import (
-    BATTERY,
-    MIN_VRAM_FOR_9B_GB,
-    PERFORMANCE,
-    PERFORMANCE_LOW_VRAM,
-    apply_to_voice_settings,
-    resolve,
-)
+from core.profiles import BATTERY, PERFORMANCE, apply_to_voice_settings, resolve
 from voice.settings import VoiceSettings
 
 
@@ -28,8 +21,9 @@ def no_profile_override(monkeypatch):
     monkeypatch.delenv("JARVIS_PROFILE", raising=False)
 
 
-def gpu(vram_gb: float) -> Hardware:
-    return Hardware(cuda=True, gpu_name="Test GPU", vram_gb=vram_gb, cpu_physical=8)
+def gpu(total_gb: float, free_gb: float | None = None) -> Hardware:
+    return Hardware(cuda=True, gpu_name="Test GPU", vram_gb=total_gb,
+                    vram_free_gb=free_gb, cpu_physical=8)
 
 
 def test_no_cuda_selects_battery():
@@ -47,11 +41,44 @@ def test_switched_off_gpu_is_explained_not_silently_ignored():
     assert "Code 45" in profile.reason
 
 
-def test_gpu_with_enough_vram_selects_performance():
-    profile = resolve(gpu(8.0))
-    assert profile.name == PERFORMANCE.name
+def test_dev_card_gets_the_measured_configuration():
+    profile = resolve(gpu(8.0, free_gb=7.07))
+    assert profile.name == "gpu-9b-8k"
     assert profile.llm_model == "qwen3.5:9b"
-    assert profile.stt_device == "cuda"
+    assert profile.llm_num_ctx == 8192
+    assert profile.stt_model == "large-v3-turbo"
+    assert profile.expected_first_audio_ms == 1400  # measured end to end
+
+
+def test_unknown_free_memory_is_estimated_from_the_total():
+    profile = resolve(gpu(8.0, free_gb=None))
+    assert profile.name == "gpu-9b-8k"
+    assert "estimated" in profile.reason
+
+
+def test_unmeasured_configuration_does_not_invent_a_latency():
+    profile = resolve(gpu(12.0, free_gb=11.2))
+    assert profile.name == "gpu-9b-32k"
+    assert profile.expected_first_audio_ms == 0
+    assert "not measured" in profile.describe()
+
+
+def test_large_card_suggests_pulling_a_bigger_model():
+    profile = resolve(gpu(24.0, free_gb=23.2), installed={"qwen3.5:9b"})
+    assert profile.llm_model == "qwen3.5:9b"
+    assert "ollama pull qwen3.5:27b" in profile.reason
+
+
+def test_nothing_suitable_installed_falls_back_to_cpu_and_says_what_to_pull():
+    profile = resolve(gpu(8.0, free_gb=7.07), installed={"llama3:8b"})
+    assert profile.name == BATTERY.name
+    assert "ollama pull qwen3.5:9b" in profile.reason
+
+
+def test_tiny_gpu_falls_back_to_cpu():
+    profile = resolve(gpu(2.0, free_gb=1.5))
+    assert profile.name == BATTERY.name
+    assert "too little" in profile.reason
 
 
 def test_performance_context_fits_entirely_in_8_gb():
@@ -60,33 +87,28 @@ def test_performance_context_fits_entirely_in_8_gb():
     assert PERFORMANCE.llm_num_ctx == 8192
 
 
-def test_small_gpu_selects_low_vram_profile():
-    profile = resolve(gpu(6.0))
-    assert profile.name == PERFORMANCE_LOW_VRAM.name
-    assert profile.llm_model == "qwen3.5:4b"
-    assert profile.stt_device == "cuda"  # keeps the fast speech recognition
-
-
-def test_vram_exactly_at_the_threshold_counts_as_enough():
-    # Boundary values are where off-by-one bugs live: is the limit inclusive?
-    assert resolve(gpu(MIN_VRAM_FOR_9B_GB)).name == PERFORMANCE.name
-    assert resolve(gpu(MIN_VRAM_FOR_9B_GB - 0.01)).name == PERFORMANCE_LOW_VRAM.name
-
-
 def test_explicit_override_wins_over_detection():
-    profile = resolve(gpu(8.0), override="battery")
+    profile = resolve(gpu(8.0, 7.07), override="battery")
     assert profile.name == BATTERY.name
     assert "manually" in profile.reason
 
 
+def test_a_specific_gpu_plan_can_be_forced():
+    assert resolve(gpu(8.0, 7.07), override="gpu-4b-8k").llm_model == "qwen3.5:4b"
+
+
+def test_auto_override_means_detect():
+    assert resolve(gpu(8.0, 7.07), override="auto").name == "gpu-9b-8k"
+
+
 def test_environment_variable_override(monkeypatch):
     monkeypatch.setenv("JARVIS_PROFILE", "battery")
-    assert resolve(gpu(8.0)).name == BATTERY.name
+    assert resolve(gpu(8.0, 7.07)).name == BATTERY.name
 
 
 def test_unknown_profile_name_is_rejected():
     with pytest.raises(ValueError):
-        resolve(gpu(8.0), override="turbo-max")
+        resolve(gpu(8.0, 7.07), override="turbo-max")
 
 
 def test_apply_to_voice_settings_copies_the_speech_choices(tmp_path):

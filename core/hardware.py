@@ -21,6 +21,10 @@ class Hardware:
     cuda: bool = False
     gpu_name: str | None = None
     vram_gb: float = 0.0
+    # Free VRAM at startup, read from nvidia-smi. The desktop and other
+    # programs already occupy part of the card, so planning against the
+    # total would overcommit. None when it cannot be read.
+    vram_free_gb: float | None = None
 
     # A discrete GPU that Windows knows about but is not currently attached to
     # the PCI bus. On ASUS laptops this is the normal state in G-Helper's
@@ -45,7 +49,8 @@ class Hardware:
     def summary(self) -> str:
         lines = []
         if self.cuda:
-            lines.append(f"GPU : {self.gpu_name} ({self.vram_gb:.1f} GB VRAM), CUDA aktif")
+            free = f", {self.vram_free_gb:.1f} GB free" if self.vram_free_gb is not None else ""
+            lines.append(f"GPU : {self.gpu_name} ({self.vram_gb:.1f} GB VRAM{free}), CUDA available")
         elif self.dgpu_disconnected:
             lines.append(f"GPU : {self.dgpu_name} is installed but NOT CONNECTED (Code 45)")
             lines.append("      Switch the GPU mode to Standard (e.g. in G-Helper or Armoury Crate) and restart")
@@ -112,6 +117,12 @@ def detect(*, probe_dgpu: bool = True) -> Hardware:
     hw = Hardware()
 
     hw.cuda, hw.gpu_name, hw.vram_gb = _detect_cuda()
+    if hw.cuda:
+        from core.vram import query_free_vram_gib
+
+        reading = query_free_vram_gib()
+        if reading is not None:
+            hw.vram_free_gb = reading[0]
 
     # Only worth the PowerShell round trip when there is no working GPU: if
     # CUDA already answers, we do not care what else is installed.
