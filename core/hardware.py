@@ -47,15 +47,15 @@ class Hardware:
         if self.cuda:
             lines.append(f"GPU : {self.gpu_name} ({self.vram_gb:.1f} GB VRAM), CUDA aktif")
         elif self.dgpu_disconnected:
-            lines.append(f"GPU : {self.dgpu_name} sistemde kayitli ama BAGLI DEGIL (Kod 45)")
-            lines.append("      G-Helper/Armoury Crate'te Standard moda gecip yeniden baslatin")
+            lines.append(f"GPU : {self.dgpu_name} is installed but NOT CONNECTED (Code 45)")
+            lines.append("      Switch the GPU mode to Standard (e.g. in G-Helper or Armoury Crate) and restart")
         else:
-            lines.append("GPU : CUDA cihazi yok")
-        power = "pil" if self.on_battery else "sarj"
+            lines.append("GPU : no CUDA device")
+        power = "battery" if self.on_battery else "plugged in"
         if self.battery_percent is not None:
-            power += f" %{self.battery_percent:.0f}"
-        lines.append(f"CPU : {self.cpu_physical} cekirdek / {self.cpu_logical} is parcacigi")
-        lines.append(f"RAM : {self.ram_gb:.0f} GB   |   Guc: {power}")
+            power += f" {self.battery_percent:.0f}%"
+        lines.append(f"CPU : {self.cpu_physical} cores / {self.cpu_logical} threads")
+        lines.append(f"RAM : {self.ram_gb:.0f} GB   |   Power: {power}")
         return "\n".join(lines)
 
 
@@ -129,7 +129,7 @@ def detect(*, probe_dgpu: bool = True) -> Hardware:
             hw.on_battery = not battery.power_plugged
             hw.battery_percent = float(battery.percent)
     except Exception as exc:  # noqa: BLE001
-        hw.notes.append(f"psutil ile donanim okunamadi: {exc}")
+        hw.notes.append(f"could not read hardware details via psutil: {exc}")
         hw.cpu_logical = os.cpu_count() or 4
         hw.cpu_physical = max(1, hw.cpu_logical // 2)
 

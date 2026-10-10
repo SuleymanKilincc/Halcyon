@@ -35,11 +35,20 @@ _URL = re.compile(r"https?://\S+")
 _MARKDOWN = re.compile(r"[*_#>]+")
 
 
-def clean_for_speech(text: str) -> str:
+# What is said aloud in place of things that cannot be read out. These are
+# spoken words, so they follow the language of the reply.
+SPOKEN_PLACEHOLDERS = {
+    "en": {"code": "code block", "url": "link"},
+    "tr": {"code": "kod bloğu", "url": "bağlantı"},
+}
+
+
+def clean_for_speech(text: str, language: str = "en") -> str:
     """Strip markup that is meaningful on screen but noise when spoken."""
-    text = _CODE_BLOCK.sub(" kod bloğu ", text)
+    words = SPOKEN_PLACEHOLDERS.get(language, SPOKEN_PLACEHOLDERS["en"])
+    text = _CODE_BLOCK.sub(f" {words['code']} ", text)
     text = _INLINE_CODE.sub(r"\1", text)
-    text = _URL.sub(" bağlantı ", text)
+    text = _URL.sub(f" {words['url']} ", text)
     text = _MARKDOWN.sub("", text)
     return re.sub(r"\s+", " ", text).strip()
 
@@ -143,7 +152,8 @@ class Synthesizer:
 
     def synthesize(self, text: str, language: str | None = None) -> Iterator[np.ndarray]:
         """Yield int16 audio chunks for one piece of text."""
-        spoken = clean_for_speech(text)
+        language = language or self.settings.default_language
+        spoken = clean_for_speech(text, language)
         if not spoken:
             return
         voice = self._load(language or self.settings.default_language)

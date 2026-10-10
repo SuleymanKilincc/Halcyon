@@ -45,18 +45,18 @@ class Profile:
 
     def describe(self) -> str:
         return (
-            f"profil: {self.label} ({self.name})\n"
+            f"profile: {self.label} ({self.name})\n"
             f"  STT : {self.stt_model} @ {self.stt_device} ({self.stt_compute})\n"
             f"  LLM : {self.llm_model}, ctx {self.llm_num_ctx}"
-            f"{'' if self.llm_reasoning else ', thinking kapali'}\n"
-            f"  beklenen ilk ses: ~{self.expected_first_audio_ms} ms"
-            + (f"\n  sebep: {self.reason}" if self.reason else "")
+            f"{'' if self.llm_reasoning else ', thinking off'}\n"
+            f"  expected first audio: ~{self.expected_first_audio_ms} ms"
+            + (f"\n  reason: {self.reason}" if self.reason else "")
         )
 
 
 BATTERY = Profile(
     name="battery",
-    label="Pil modu",
+    label="Battery",
     stt_model="base",
     stt_device="cpu",
     stt_compute="int8",
@@ -75,7 +75,7 @@ BATTERY = Profile(
 
 PERFORMANCE = Profile(
     name="performance",
-    label="Tam guc",
+    label="Performance",
     stt_model="large-v3-turbo",
     stt_device="cuda",
     stt_compute="int8_float16",
@@ -101,7 +101,7 @@ PERFORMANCE = Profile(
 PERFORMANCE_LOW_VRAM = replace(
     PERFORMANCE,
     name="performance-lowvram",
-    label="Tam guc (dusuk VRAM)",
+    label="Performance (low VRAM)",
     llm_model="qwen3.5:4b",
     llm_num_ctx=8192,
     expected_first_audio_ms=700,
@@ -130,28 +130,28 @@ def resolve(hardware: Hardware | None = None, override: str | None = None) -> Pr
         key = override.strip().lower()
         if key not in PROFILES:
             raise ValueError(
-                f"Bilinmeyen profil {override!r}. Secenekler: {', '.join(PROFILES)}"
+                f"Unknown profile {override!r}. Choices: {', '.join(PROFILES)}"
             )
         chosen = PROFILES[key]
-        return replace(chosen, reason="elle secildi (JARVIS_PROFILE / --profile)")
+        return replace(chosen, reason="chosen manually (JARVIS_PROFILE / --profile)")
 
     if not hardware.cuda:
         if hardware.dgpu_disconnected:
             reason = (
-                f"{hardware.dgpu_name} sistemde var ama bagli degil (Kod 45) - "
-                "G-Helper'da Standard moda gecip yeniden baslatin"
+                f"{hardware.dgpu_name} is installed but not connected (Code 45) - "
+                "switch the GPU mode to Standard and restart"
             )
         else:
-            reason = "CUDA cihazi bulunamadi"
+            reason = "no CUDA device found"
         return replace(BATTERY, reason=reason)
 
     if hardware.vram_gb < MIN_VRAM_FOR_9B_GB:
         return replace(
             PERFORMANCE_LOW_VRAM,
-            reason=f"{hardware.vram_gb:.1f} GB VRAM, 9B icin dar",
+            reason=f"{hardware.vram_gb:.1f} GB VRAM is too little for the 9B model",
         )
 
-    return replace(PERFORMANCE, reason=f"{hardware.gpu_name} kullanilabilir")
+    return replace(PERFORMANCE, reason=f"{hardware.gpu_name} is available")
 
 
 def apply_to_voice_settings(profile: Profile, settings=None, hardware=None):  # noqa: ANN001

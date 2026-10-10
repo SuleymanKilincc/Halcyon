@@ -59,3 +59,6 @@ models/
 # Audio scratch
 *.wav
 *.mp3
+
+# Local copy of the Turkish project report (kept outside version control)
+Jarvis_Sistem_Raporu.pdf

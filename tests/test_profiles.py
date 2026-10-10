@@ -44,7 +44,7 @@ def test_switched_off_gpu_is_explained_not_silently_ignored():
     profile = resolve(hw)
     assert profile.name == BATTERY.name
     assert "RTX Test" in profile.reason
-    assert "Kod 45" in profile.reason
+    assert "Code 45" in profile.reason
 
 
 def test_gpu_with_enough_vram_selects_performance():
@@ -76,7 +76,7 @@ def test_vram_exactly_at_the_threshold_counts_as_enough():
 def test_explicit_override_wins_over_detection():
     profile = resolve(gpu(8.0), override="battery")
     assert profile.name == BATTERY.name
-    assert "elle" in profile.reason
+    assert "manually" in profile.reason
 
 
 def test_environment_variable_override(monkeypatch):

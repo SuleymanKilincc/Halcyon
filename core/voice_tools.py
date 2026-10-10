@@ -53,9 +53,9 @@ def get_voice_tools(include_gated: bool = False) -> list[Any]:
 
 def describe_voice_tools(include_gated: bool = False) -> str:
     names = [t.name for t in get_voice_tools(include_gated)]
-    line = f"{len(names)} arac: {', '.join(names)}"
+    line = f"{len(names)} tools: {', '.join(names)}"
     if not include_gated:
-        line += f"\n      (kapali: {', '.join(VOICE_GATED_TOOLS)} - Faz 3 onay katmani bekliyor)"
+        line += f"\n      (disabled until the confirmation layer exists: {', '.join(VOICE_GATED_TOOLS)})"
     return line
 
 

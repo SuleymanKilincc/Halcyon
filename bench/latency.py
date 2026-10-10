@@ -31,17 +31,22 @@ from voice.stt import Transcriber
 from voice.tts import SentenceStreamer, Synthesizer
 from voice.vad import SpeechDetector, VADEvent
 
+# Test utterances are speech *data*, so the Turkish ones stay Turkish - and
+# they must keep their diacritics: without them Piper mispronounces the words
+# and the STT measurement is scored on speech that was never correct.
 PROMPTS = [
-    ("tr", "Masaustundeki dosyalari listeler misin"),
-    ("tr", "Bana kisa bir python betigi yaz"),
-    ("tr", "Sistem sicakligi nedir"),
+    ("tr", "Masaüstündeki dosyaları listeler misin"),
+    ("tr", "Bana kısa bir Python betiği yaz"),
+    ("tr", "Sistem sıcaklığı nedir"),
     ("en", "List the files on my desktop"),
 ]
 
+# A scripted Turkish reply (spoken data), used when no LLM is involved so that
+# synthesis timing is measured on realistic text.
 REPLY = (
-    "Tabii efendim. Masaustunuzdeki dosyalari listeledim. "
-    "Toplam on iki dosya var, bunlarin ucu klasor. "
-    "Ayrintili gormek ister misiniz?"
+    "Tabii efendim. Masaüstünüzdeki dosyaları listeledim. "
+    "Toplam on iki dosya var, bunların üçü klasör. "
+    "Ayrıntılı görmek ister misiniz?"
 )
 
 
@@ -118,7 +123,7 @@ def main() -> int:
         available, problem = check_model_available(profile)
         if not available:
             print()
-            print(f"HATA: {problem}")
+            print(f"ERROR: {problem}")
             return 1
 
     load_start = time.perf_counter()
@@ -127,7 +132,7 @@ def main() -> int:
     synth.preload()
     detector = SpeechDetector(settings.vad)
     transcriber.warmup()
-    synth.synthesize_all("isinma", "tr")
+    synth.synthesize_all("warm-up", "en")
     print(f"\nSTT : {transcriber.describe()}")
     print(f"TTS : piper {settings.tts.voices} @ {synth.sample_rate} Hz")
     print(f"VAD : silero, {settings.vad.min_silence_ms} ms endpoint silence")
@@ -209,7 +214,7 @@ def main() -> int:
               f"min {min(totals)} ms   max {max(totals)} ms")
         target = profile.expected_first_audio_ms if args.llm else 1500
         verdict = "PASS" if statistics.median(totals) <= target else "OVER BUDGET"
-        print(f"hedef <= {target} ms ({profile.label})  ->  {verdict}")
+        print(f"target <= {target} ms ({profile.label})  ->  {verdict}")
         if not args.llm:
             print("\nNote: run with --llm for the real figure; the scripted stream "
                   "does not include model thinking time.")

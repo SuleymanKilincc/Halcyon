@@ -1,68 +1,67 @@
-# Jarvis - Python bağımlılıkları
+# Jarvis - Python dependencies
 #
-# Alt sınırlar bu makinede kurulu ve test edilmiş sürümlerdir. Önceki
-# requirements.txt LangChain 0.3 / LangGraph 0.2 diyordu ama kurulu olan
-# 1.x'ti; API'ler o arada değişti, dolayısıyla taban sürümler gerçeği
-# yansıtacak şekilde güncellendi.
+# The lower bounds are the versions installed and tested on the development
+# machine. An earlier version of this file pinned LangChain 0.3 / LangGraph 0.2
+# while 1.x was actually installed; the APIs changed in between, so the floors
+# were raised to match reality.
 
-# ---------------------------------------------------------------- LLM / Agent
+# ---------------------------------------------------------------- LLM / agent
 langchain>=1.3.0
 langchain-core>=1.4.0
 langchain-ollama>=1.1.0
 langchain-community>=0.4.0
 langgraph>=1.2.0
+ollama>=0.6
 
-# ------------------------------------------------------------ Ses (Faz 1)
-# Yerel STT: CTranslate2 tabanlı. GPU varsa CUDA'yı kendi kullanır.
+# ---------------------------------------------------------------- voice
+# Local speech-to-text, built on CTranslate2. Uses CUDA when a GPU is present.
 faster-whisper>=1.2.0
-# Uç noktalama (kullanıcı ne zaman sustu). torch'a bağlıdır.
+# End-of-speech detection. Depends on torch.
 silero-vad>=6.2.0
-# Yerel TTS: ONNX, CPU'da ~20x gerçek zamanlı.
+# Local text-to-speech, ONNX based, ~20x faster than real time on CPU.
 piper-tts>=1.8.0
-# Mikrofon ve hoparlör (PortAudio).
+# Microphone and speaker access (PortAudio).
 sounddevice>=0.5.0
 numpy>=1.26,<2
 
-# torch AYRI kurulmalıdır: PyPI'daki varsayılan paket Windows'ta CPU-only'dir.
-# CUDA'lı sürüm için:
-#   pip install --index-url https://download.pytorch.org/whl/cu126 torch torchaudio
+# Note: the default torch wheel on PyPI for Windows is CPU-only. GPU
+# acceleration needs a CUDA build of torch (developed against CUDA 12.6).
 torch>=2.4.0
 
-# ---------------------------------------------------------------- Web / Araçlar
+# ---------------------------------------------------------------- web / tools
 duckduckgo-search>=8.0.0
 beautifulsoup4>=4.12.0
 requests>=2.31.0
 lxml>=4.9.0
 playwright>=1.60.0
 
-# ---------------------------------------------------------------- Dosya işlemleri
+# ---------------------------------------------------------------- archives
 py7zr>=1.1.0
 rarfile>=4.1
 
-# ---------------------------------------------------------------- GUI
+# ---------------------------------------------------------------- desktop UI
 customtkinter>=6.0.0
 pillow>=10.0.0
 
-# ---------------------------------------------------------------- Veritabanı
+# ---------------------------------------------------------------- storage
 sqlalchemy>=2.0.0
 
-# ---------------------------------------------------------------- Donanım izleme
+# ---------------------------------------------------------------- hardware monitoring
 psutil>=7.0.0
 GPUtil>=1.4.0
 wmi>=1.5.1
 
-# ---------------------------------------------------------------- Yardımcılar
+# ---------------------------------------------------------------- utilities
 python-dotenv>=1.0.0
 colorama>=0.4.6
 python-dateutil>=2.8.2
 langdetect>=1.0.9
 
-# ---------------------------------------------------------------- KULLANIMDAN KALDIRILDI
-# Aşağıdakiler Faz 1 ile yerlerini yenilerine bıraktı; hâlâ kuruluysalar
-# kaldırılabilirler.
+# ---------------------------------------------------------------- replaced
+# These were replaced by the current voice pipeline and are no longer needed:
 #   SpeechRecognition + pyaudio  -> sounddevice + silero-vad
-#   openai-whisper               -> faster-whisper (4-8x daha hızlı)
+#   openai-whisper               -> faster-whisper (4-8x faster)
 #   pyttsx3                      -> piper-tts
 #   TTS (Coqui)                  -> piper-tts
-#     Coqui TTS 0.22 arşivlenmiş bir projedir ve torch 2.x ile uyumsuzdur.
-#   selenium                     -> playwright (zaten kullanılıyor)
+#     Coqui TTS 0.22 is an archived project and incompatible with torch 2.x.
+#   selenium                     -> playwright (already in use)

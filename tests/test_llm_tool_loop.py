@@ -59,31 +59,31 @@ def make_llm(responses, tools=()):
 
 
 def test_plain_answer_is_streamed_and_remembered():
-    llm = make_llm([[text("Merhaba "), text("efendim.")]])
-    assert "".join(llm.stream("selam")) == "Merhaba efendim."
+    llm = make_llm([[text("Hello "), text("sir.")]])
+    assert "".join(llm.stream("hi")) == "Hello sir."
     assert [m["role"] for m in llm._history] == ["user", "assistant"]
-    assert llm._history[-1]["content"] == "Merhaba efendim."
+    assert llm._history[-1]["content"] == "Hello sir."
 
 
 def test_history_is_sent_with_the_next_question():
     # This is the bug that made "show me" arrive with no antecedent: each turn
     # used to send only the system prompt and the newest sentence.
-    llm = make_llm([[text("On bir klasör var.")], [text("On bir.")]])
-    list(llm.stream("Klasörleri say"))
-    list(llm.stream("Kaç taneydi?"))
+    llm = make_llm([[text("There are eleven folders.")], [text("Eleven.")]])
+    list(llm.stream("Count the folders"))
+    list(llm.stream("How many were there?"))
     second_request = llm._client.requests[1]["messages"]
     contents = [m["content"] for m in second_request]
-    assert "Klasörleri say" in contents
-    assert "On bir klasör var." in contents
+    assert "Count the folders" in contents
+    assert "There are eleven folders." in contents
 
 
 def test_tool_is_called_and_its_result_reaches_the_model():
     llm = make_llm(
-        [[tool_call("shout", word="jarvis")], [text("Sonuç JARVIS.")]],
+        [[tool_call("shout", word="jarvis")], [text("Result: JARVIS.")]],
         tools=[shout],
     )
-    answer = "".join(llm.stream("bağır"))
-    assert answer == "Sonuç JARVIS."
+    answer = "".join(llm.stream("shout it"))
+    assert answer == "Result: JARVIS."
     assert llm.last_tool_calls == ["shout"]
     second_request = llm._client.requests[1]["messages"]
     tool_messages = [m for m in second_request if m["role"] == "tool"]
@@ -92,26 +92,26 @@ def test_tool_is_called_and_its_result_reaches_the_model():
 
 def test_text_before_and_after_a_tool_call_is_joined_with_a_space():
     # Regression test. Each round is a separate generation, so the model
-    # produced "...bakıyorum." and then "Efendim, ..." with nothing between
-    # them. Joined raw, "bakıyorum.Efendim" has no space after the full stop,
+    # produced "...checking." and then "Sir, ..." with nothing between
+    # them. Joined raw, "checking.Sir" has no space after the full stop,
     # the sentence splitter never fires, and nothing is spoken until the end.
     llm = make_llm(
-        [[text("Bakıyorum."), tool_call("shout", word="x")], [text("Efendim, buldum.")]],
+        [[text("Checking."), tool_call("shout", word="x")], [text("Sir, found it.")]],
         tools=[shout],
     )
-    assert "".join(llm.stream("bak")) == "Bakıyorum. Efendim, buldum."
+    assert "".join(llm.stream("check")) == "Checking. Sir, found it."
 
 
 def test_unknown_tool_is_reported_to_the_model_not_raised():
-    llm = make_llm([[tool_call("no_such_tool")], [text("Yapamadım.")]], tools=[shout])
-    assert "".join(llm.stream("dene")) == "Yapamadım."
+    llm = make_llm([[tool_call("no_such_tool")], [text("I could not.")]], tools=[shout])
+    assert "".join(llm.stream("try")) == "I could not."
     tool_message = next(m for m in llm._history if m["role"] == "tool")
     assert "no_such_tool" in tool_message["content"]
 
 
 def test_a_failing_tool_does_not_crash_the_turn():
-    llm = make_llm([[tool_call("explode")], [text("Bir hata oldu efendim.")]], tools=[explode])
-    assert "".join(llm.stream("patlat")) == "Bir hata oldu efendim."
+    llm = make_llm([[tool_call("explode")], [text("Something went wrong, sir.")]], tools=[explode])
+    assert "".join(llm.stream("blow up")) == "Something went wrong, sir."
     tool_message = next(m for m in llm._history if m["role"] == "tool")
     assert "disk on fire" in tool_message["content"]
 

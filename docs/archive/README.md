@@ -1,8 +1,7 @@
-# Arşiv
+# Archive
 
-Bu klasördeki dosyalar projenin ilk dört "faz"ı sırasında üretilmiş
-changelog/özet belgeleridir. Tarihsel kayıt olarak duruyorlar; **güncel
-durumu tarif etmiyorlar** ve birçoğu koddan sapmış durumda (ör. kapalı
-olan özellikleri açık gibi anlatıyorlar).
+These documents were written during the project's first phases, before the current voice pipeline existed. They are kept as a historical record only.
 
-Güncel dokümantasyon için üst klasöre ve kök `README.md`'ye bakın.
+**They do not describe the current system**, and several of them are inaccurate even for the system they were written about — for example, they describe features as enabled that were switched off in the code. They also contain setup instructions that no longer apply.
+
+For the current state of the project, see the [README](../../README.md) and [docs/VOICE.md](../VOICE.md).

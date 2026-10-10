@@ -48,17 +48,26 @@ from typing import Any
 from core.profiles import Profile
 
 JARVIS_PERSONA = (
-    "Sen Jarvis'sin: kullanicinin kendi bilgisayarinda calisan, ona bagli ve "
-    "sakin bir asistan. Kullaniciya 'efendim' diye hitap edersin - her cumlede "
-    "degil, dogal dustugu yerde. Olcülü, kendinden emin ve az konusan bir "
-    "uslubun var; abartili neseli degilsin.\n"
-    "Sesli konusuyorsun. Bu yuzden: kisa cevap ver, en fazla iki cumle. "
-    "Madde isareti, baslik, kod blogu, emoji veya yildiz kullanma - bunlar "
-    "sesli okundugunda anlamsiz. Sayilari ve kisaltmalari okunacak sekilde yaz.\n"
-    "Kullanici hangi dilde konusursa o dilde cevap ver.\n"
-    "Bir islemi yapabiliyorsan once yap, sonra sonucu tek cumleyle soyle. "
-    "Yapamadigin bir sey istenirse uydurma; neyi yapamadigini kisaca soyle."
+    "You are Jarvis: a calm, loyal assistant running entirely on the user's own "
+    "computer. Your manner is measured, confident and economical, never gushing.\n"
+    "Address the user respectfully where it falls naturally, not in every "
+    "sentence: 'sir' in English, 'efendim' in Turkish.\n"
+    "You are speaking aloud, so keep answers short - two sentences at most. Never "
+    "use bullet points, headings, code blocks, emoji or asterisks: they are "
+    "meaningless when read aloud. Write numbers and abbreviations the way they "
+    "should be spoken.\n"
+    "Always reply in the language the user spoke.\n"
+    "If you can do something with a tool, do it first, then report the result in "
+    "one sentence. If asked for something you cannot do, do not make anything up; "
+    "say briefly what you cannot do."
 )
+
+# Spoken when the tool loop gives up. Spoken words stay in the language the
+# user spoke, so these are kept per language.
+GIVE_UP = {
+    "en": "I could not finish that, sir.",
+    "tr": "Bunu tamamlayamadım efendim.",
+}
 
 # Kept for callers that want the plain assistant with no persona or tools.
 SPEECH_SYSTEM_PROMPT = JARVIS_PERSONA
@@ -123,7 +132,7 @@ class SpeechLLM:
         behind it.
         """
         for _ in self._raw_stream([{"role": "user", "content": "merhaba"}],
-                                  system="Tek kelimeyle cevap ver.", use_tools=False):
+                                  system="Answer in one word.", use_tools=False):
             pass
 
     def prewarm(self) -> None:
@@ -143,7 +152,7 @@ class SpeechLLM:
             try:
                 for _ in self._raw_stream(
                     [{"role": "user", "content": "."}],
-                    system="Tek karakter yaz.", use_tools=False, num_predict=1,
+                    system="Reply with one character.", use_tools=False, num_predict=1,
                 ):
                     pass
             except Exception:  # noqa: BLE001 - a failed prewarm must never break a turn
@@ -172,7 +181,8 @@ class SpeechLLM:
             payload["tools"] = self._tool_specs
         return self._client.chat(**payload)
 
-    def stream(self, prompt: str, system: str | None = None) -> Iterator[str]:
+    def stream(self, prompt: str, system: str | None = None,
+               language: str | None = None) -> Iterator[str]:
         """
         Yield response text deltas for one user turn.
 
@@ -235,7 +245,7 @@ class SpeechLLM:
             # Fell out of the loop still wanting tools: say so rather than
             # ending the turn in silence, which reads as a crash.
             if not spoken:
-                yield "Bunu tamamlayamadim efendim."
+                yield GIVE_UP.get(language or "", GIVE_UP["en"])
         finally:
             self._trim_history()
 
@@ -247,23 +257,23 @@ class SpeechLLM:
             try:
                 arguments = json.loads(arguments)
             except json.JSONDecodeError:
-                return name, f"Arac argumanlari okunamadi: {arguments!r}"
+                return name, f"Could not parse the tool arguments: {arguments!r}"
 
         tool = self._tools.get(name)
         if tool is None:
-            return name, f"'{name}' diye bir arac yok."
+            return name, f"There is no tool called '{name}'."
 
         try:
             result = tool.invoke(arguments)
         except Exception as exc:  # noqa: BLE001 - tool errors are data for the model
-            return name, f"Arac hatasi: {exc}"
+            return name, f"Tool error: {exc}"
 
         text = result if isinstance(result, str) else str(result)
         # A directory listing can be thousands of lines. The model only needs
         # enough to answer in two spoken sentences, and the rest is context
         # budget that pushes the KV cache out of VRAM.
         if len(text) > 4000:
-            text = text[:4000] + "\n... (kisaltildi)"
+            text = text[:4000] + "\n... (truncated)"
         return name, text
 
     def _trim_history(self) -> None:
@@ -301,8 +311,9 @@ def build_llm(profile: Profile, *, temperature: float = 0.4, base_url: str | Non
                      tools=tools, system=system)
 
 
-def stream_reply(llm: SpeechLLM, prompt: str, system: str | None = None) -> Iterator[str]:
-    return llm.stream(prompt, system)
+def stream_reply(llm: SpeechLLM, prompt: str, system: str | None = None,
+                 language: str | None = None) -> Iterator[str]:
+    return llm.stream(prompt, system, language)
 
 
 def check_model_available(profile: Profile, *, base_url: str | None = None) -> tuple[bool, str]:
@@ -324,17 +335,17 @@ def check_model_available(profile: Profile, *, base_url: str | None = None) -> t
         with urllib.request.urlopen(f"{base_url}/api/tags", timeout=5) as response:
             tags = json.load(response)
     except urllib.error.URLError as exc:
-        return False, f"Ollama'ya baglanilamadi ({base_url}): {exc.reason}"
+        return False, f"Could not connect to Ollama ({base_url}): {exc.reason}"
     except Exception as exc:  # noqa: BLE001
-        return False, f"Ollama'ya baglanilamadi ({base_url}): {exc}"
+        return False, f"Could not connect to Ollama ({base_url}): {exc}"
 
     names = {model.get("name", "") for model in tags.get("models", [])}
     if profile.llm_model in names:
         return True, ""
     return False, (
-        f"'{profile.llm_model}' kurulu degil. Once indirin:\n"
+        f"'{profile.llm_model}' is not installed. Pull it first:\n"
         f"    ollama pull {profile.llm_model}\n"
-        f"  Kurulu modeller: {', '.join(sorted(names)) or '(yok)'}"
+        f"  Installed models: {', '.join(sorted(names)) or '(none)'}"
     )
 
 
@@ -343,7 +354,7 @@ def measure_idle_penalty(profile: Profile, gaps: tuple[int, ...] = (0, 10)) -> d
     llm = SpeechLLM(profile, tools=None)
     llm.warmup()
     results: dict[int, float] = {}
-    questions = ["Saat kac?", "Bugun hava nasil?", "Bana bir fikra anlat.", "Sistem nasil?"]
+    questions = ["What time is it?", "How is the weather?", "Tell me a joke.", "How is the system?"]
     for index, gap in enumerate(gaps):
         if gap:
             time.sleep(gap)

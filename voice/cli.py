@@ -35,16 +35,22 @@ from voice.stt import Transcript
 
 STATE_LABEL = {
     State.IDLE: "",
-    State.LISTENING: "dinliyorum",
-    State.TRANSCRIBING: "cozumluyorum",
-    State.RESPONDING: "dusunuyorum",
-    State.SPEAKING: "konusuyorum",
+    State.LISTENING: "listening",
+    State.TRANSCRIBING: "transcribing",
+    State.RESPONDING: "thinking",
+    State.SPEAKING: "speaking",
 }
+
+
+# What echo mode says back, per detected language. These are spoken words,
+# so they stay in the language the user spoke.
+ECHO_PREFIX = {"tr": "Şunu duydum:", "en": "I heard:"}
 
 
 def make_echo_handler():
     def handler(transcript: Transcript) -> Iterator[str]:
-        yield f"Sunu duydum: {transcript.text}"
+        prefix = ECHO_PREFIX.get(transcript.language, ECHO_PREFIX["en"])
+        yield f"{prefix} {transcript.text}"
 
     return handler
 
@@ -53,11 +59,11 @@ def make_llm_handler(profile, tools):  # noqa: ANN001
     llm = build_llm(profile, tools=tools)
     # Load the weights now. Otherwise the first thing the user says pays a
     # 3.7-6.7 s cold start and it looks like the assistant is broken.
-    print(f"Model isitiliyor ({profile.llm_model})...")
+    print(f"Warming up the model ({profile.llm_model})...")
     llm.warmup()
 
     def handler(transcript: Transcript) -> Iterator[str]:
-        yield from stream_reply(llm, transcript.text)
+        yield from stream_reply(llm, transcript.text, language=transcript.language)
 
     return llm, handler
 
@@ -91,7 +97,7 @@ def main() -> int:
     if args.model:
         from dataclasses import replace
 
-        profile = replace(profile, llm_model=args.model, reason="model elle secildi")
+        profile = replace(profile, llm_model=args.model, reason="model chosen manually")
 
     print(hardware.summary())
     print()
@@ -113,11 +119,11 @@ def main() -> int:
     if args.llm:
         available, problem = check_model_available(profile)
         if not available:
-            print(f"HATA: {problem}")
+            print(f"ERROR: {problem}")
             return 1
         if not args.no_tools:
             tools = get_voice_tools(include_gated=args.unsafe_tools)
-            print(f"Arac: {describe_voice_tools(include_gated=args.unsafe_tools)}")
+            print(f"Tools: {describe_voice_tools(include_gated=args.unsafe_tools)}")
         llm, handler = make_llm_handler(profile, tools)
     else:
         handler = make_echo_handler()
@@ -135,25 +141,27 @@ def main() -> int:
             print(f"\r[{label}]{' ' * 20}", end="", flush=True)
 
     def on_user(transcript: Transcript) -> None:
-        print(f"\r\033[92mSen\033[0m ({transcript.language}): {transcript.text}")
+        print(f"\r\033[92mYou\033[0m ({transcript.language}): {transcript.text}")
 
     def on_done(text: str) -> None:
+        if llm is not None and llm.last_tool_calls:
+            print(f"  \033[90mtools: {', '.join(llm.last_tool_calls)}\033[0m")
         print(f"\033[96mJarvis\033[0m: {text.strip()}")
 
     def on_barge_in() -> None:
-        print("\r\033[93m-- sozunu kestin --\033[0m")
+        print("\r\033[93m-- interrupted --\033[0m")
 
     def on_timings(t: TurnTimings) -> None:
         over = ""
         if profile.expected_first_audio_ms and t.total_to_first_audio_ms > 0:
             ratio = t.total_to_first_audio_ms / profile.expected_first_audio_ms
             if ratio > 1.5:
-                over = f"  (beklenenin {ratio:.1f} kati)"
-        print(f"  \033[90mstt {t.stt_ms} ms | ilk token {t.llm_first_token_ms} ms | "
-              f"tts {t.tts_ms} ms | ilk ses {t.total_to_first_audio_ms} ms{over}\033[0m")
+                over = f"  ({ratio:.1f}x the expected time)"
+        print(f"  \033[90mstt {t.stt_ms} ms | first token {t.llm_first_token_ms} ms | "
+              f"tts {t.tts_ms} ms | first audio {t.total_to_first_audio_ms} ms{over}\033[0m")
 
     def on_error(exc: Exception) -> None:
-        print(f"\r\033[91mHata:\033[0m {exc}")
+        print(f"\r\033[91mError:\033[0m {exc}")
 
     events = VoiceEvents(
         on_speech_start=on_speech_start,
@@ -166,18 +174,18 @@ def main() -> int:
     )
 
     loop = VoiceLoop(handler, settings, events)
-    print("Modeller yukleniyor...")
+    print("Loading models...")
     loop.prepare()
     print(f"STT : {loop.transcriber.describe()}")
     print(f"TTS : {settings.tts.voices} @ {loop.synthesizer.sample_rate} Hz")
-    print(f"Mod : {profile.llm_model if args.llm else 'echo (LLM yok)'}"
-          f"{'  | barge-in kapali' if args.no_barge_in else ''}")
-    print("\nKonusmaya baslayin. Cikmak icin Ctrl+C.\n")
+    print(f"Mode: {profile.llm_model if args.llm else 'echo (no LLM)'}"
+          f"{'  | barge-in off' if args.no_barge_in else ''}")
+    print("\nStart talking. Press Ctrl+C to quit.\n")
 
     try:
         loop.run()
     except KeyboardInterrupt:
-        print("\nKapatiliyor...")
+        print("\nShutting down...")
     finally:
         loop.close()
     return 0

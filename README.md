@@ -90,42 +90,7 @@ A few problems that shaped the design. Details and raw measurements are in [`doc
 
 Everything is Python 3.10.
 
-## Getting started
-
-### Requirements
-
-- Windows 10 or 11 (the only platform tested so far)
-- Python 3.10
-- [Ollama](https://ollama.com/download)
-- A microphone and **headphones** (there is no echo cancellation yet — through speakers, Jarvis hears itself)
-- Optional: an NVIDIA GPU with 8 GB+ VRAM for the performance profile
-
-### Install
-
-```bash
-git clone https://github.com/SuleymanKilincc/Jarvis.git
-cd Jarvis
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-```
-
-For GPU acceleration, replace the default CPU-only PyTorch build:
-
-```bash
-pip install --index-url https://download.pytorch.org/whl/cu126 torch torchaudio
-```
-
-Pull the language models (the battery profile only needs the 2B one):
-
-```bash
-ollama pull qwen3.5:9b
-ollama pull qwen3.5:2b
-```
-
-Speech models are downloaded automatically on first run (~1.7 GB for the GPU profile).
-
-### Run
+## Usage
 
 ```bash
 python -m voice.cli --info          # show detected hardware and the chosen profile
@@ -167,6 +132,7 @@ docs/               VOICE.md (pipeline + measurements), system report (PDF)
 
 Stated plainly, because they matter if you try it:
 
+- **Developed and tested on Windows 11 only.**
 - **Voice can only use read-only tools.** Writing files, deleting files and running shell commands are deliberately disabled by voice until a spoken confirmation layer exists. A misheard sentence should never reach a destructive tool.
 - **No echo cancellation** — use headphones.
 - **The desktop UI still uses the old pipeline**; the new one runs from the terminal.
@@ -186,4 +152,4 @@ Stated plainly, because they matter if you try it:
 
 ## License
 
-No license has been chosen yet. Until one is added, the default applies: all rights reserved.
+[MIT](LICENSE) © 2026 Süleyman Kılınç
