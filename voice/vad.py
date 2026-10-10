@@ -80,13 +80,16 @@ class SpeechDetector:
         return self._in_speech
 
     def probability(self, frame: np.ndarray) -> float:
-        import torch
-
+        # Validate before importing torch: a bad frame is a caller bug, and it
+        # should be reported immediately rather than after loading a
+        # multi-gigabyte library to discover it.
         if len(frame) != VAD_FRAME_SAMPLES:
             raise ValueError(
                 f"Silero VAD requires exactly {VAD_FRAME_SAMPLES} samples at "
                 f"{SAMPLE_RATE} Hz, got {len(frame)}"
             )
+        import torch
+
         audio = _to_float32(frame)
         with torch.no_grad():
             return float(self._model(torch.from_numpy(audio), SAMPLE_RATE).item())

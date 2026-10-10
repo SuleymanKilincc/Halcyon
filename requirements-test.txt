@@ -1,0 +1,11 @@
+# What the automated tests need - deliberately NOT the full requirements.txt.
+#
+# The unit tests exercise the project's logic (sentence splitting, profile
+# selection, endpointing, the tool-calling loop) with fakes standing in for
+# the microphone, the GPU and the Ollama server. So they need none of torch,
+# faster-whisper, piper or sounddevice, which together are several gigabytes
+# and would make every CI run download them for nothing.
+pytest>=8
+numpy>=1.26,<2
+ollama>=0.6
+langchain-core>=1.4

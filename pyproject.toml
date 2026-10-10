@@ -1,0 +1,7 @@
+[tool.pytest.ini_options]
+# Only tests/ holds automated tests. scripts/manual/ contains interactive
+# checks that wait for keyboard input or open windows; collecting them would
+# hang the run instead of failing it.
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra"

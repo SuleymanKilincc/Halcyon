@@ -57,7 +57,9 @@ class TurnTimings:
 
     @staticmethod
     def _ms(start: float, end: float) -> int:
-        return int((end - start) * 1000) if start and end else -1
+        # round, not int: int() truncates, and floating-point subtraction makes
+        # 10.42 - 10.3 come out as 0.11999..., which int() reports as 119 ms.
+        return round((end - start) * 1000) if start and end else -1
 
     @property
     def stt_ms(self) -> int:

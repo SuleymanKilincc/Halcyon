@@ -192,10 +192,10 @@ def main() -> int:
                 if close is not None:
                     close()
 
-            stt_ms = int((transcribed - speech_end) * 1000)
-            llm_ms = int((first_token - transcribed) * 1000)
-            tts_ms = int((first_audio - first_token) * 1000)
-            total_ms = int((first_audio - speech_end) * 1000)
+            stt_ms = round((transcribed - speech_end) * 1000)
+            llm_ms = round((first_token - transcribed) * 1000)
+            tts_ms = round((first_audio - first_token) * 1000)
+            total_ms = round((first_audio - speech_end) * 1000)
             totals.append(total_ms)
 
             print(f"{language:<5} {prompt[:38]:<38} {stt_ms:>6}ms {llm_ms:>8}ms "
