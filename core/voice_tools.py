@@ -41,6 +41,53 @@ VOICE_GATED_TOOLS = (
 )
 
 
+# How each tool is described to the model when it explains what it can and
+# cannot do. Generated into the system prompt from the tools actually enabled,
+# so the description cannot drift from the truth when a tool is switched on.
+ABILITY = {
+    "list_directory": "list what is inside a folder",
+    "read_file": "read a text file",
+    "get_system_stats": "report hardware statistics such as temperatures, load, memory and battery",
+    "search_web": "search the web",
+    "fetch_webpage": "read a web page",
+    "execute_terminal_command": "run commands or programs",
+    "write_file": "create or overwrite files",
+    "append_to_file": "edit files",
+    "delete_file": "delete files",
+    "download_file": "download files",
+    "extract_archive": "extract archives",
+    "browse_website_interactive": "control a web browser",
+}
+
+
+def capability_statement(tools: list[Any]) -> str:
+    """
+    The part of the system prompt that tells the model what it can and cannot do.
+
+    Built from the enabled tools rather than written by hand: in a live session
+    the model said "let me attempt" creating a folder, called an unrelated web
+    search, then said it could not - it had never been told which actions were
+    switched off, or why.
+    """
+    enabled = [t.name for t in tools]
+    can = [ABILITY[name] for name in enabled if name in ABILITY]
+    cannot = [ABILITY[name] for name in VOICE_GATED_TOOLS if name not in enabled]
+    if "write_file" not in enabled:
+        cannot.append("create folders")
+
+    lines = []
+    if can:
+        lines.append("What you can do, using your tools: " + "; ".join(can) + ". "
+                     "Call a tool only when the request needs it.")
+    else:
+        lines.append("You have no tools in this conversation.")
+    if cannot:
+        lines.append("What you cannot do yet: " + "; ".join(cannot) + ". These are switched off "
+                     "until a spoken confirmation step exists. When asked for one, say in one "
+                     "sentence that you cannot do it yet, and offer the closest thing you can do.")
+    return "\n".join(lines)
+
+
 def get_voice_tools(include_gated: bool = False) -> list[Any]:
     """Return the tool objects Jarvis may call from a spoken instruction."""
     from tools import get_all_tools

@@ -59,9 +59,11 @@ JARVIS_PERSONA = (
     "meaningless when read aloud. Write numbers and abbreviations the way they "
     "should be spoken.\n"
     "Always reply in the language the user spoke.\n"
-    "If you can do something with a tool, do it first, then report the result in "
-    "one sentence. If asked for something you cannot do, do not make anything up; "
-    "say briefly what you cannot do."
+    "Never say you are doing, will do, or have done something unless you call the "
+    "tool for it in this reply and its result confirms it; do not offer to 'try'.\n"
+    "When you use a tool, answer only from what it returned. If the result does not "
+    "contain the answer, say so instead of filling the gap from memory.\n"
+    "No backticks, code or commands in your replies: they cannot be spoken."
 )
 
 # Spoken when the tool loop gives up. Spoken words stay in the language the
@@ -339,7 +341,17 @@ def _to_ollama_tool(tool: Any) -> dict[str, Any]:  # noqa: ANN401
 
 
 def build_llm(profile: Profile, *, temperature: float = 0.4, base_url: str | None = None,
-              tools: list[Any] | None = None, system: str = JARVIS_PERSONA) -> SpeechLLM:
+              tools: list[Any] | None = None, system: str | None = None) -> SpeechLLM:
+    """
+    A SpeechLLM with the Jarvis persona plus a statement of what it can do.
+
+    The statement is generated from `tools`, so it always matches the tools
+    actually enabled. Pass `system` to replace the whole prompt.
+    """
+    if system is None:
+        from core.voice_tools import capability_statement
+
+        system = JARVIS_PERSONA + "\n" + capability_statement(tools or [])
     return SpeechLLM(profile, temperature=temperature, base_url=base_url,
                      tools=tools, system=system)
 

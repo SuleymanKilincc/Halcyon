@@ -165,6 +165,43 @@ On the battery profile the same settings improve Turkish markedly in far-field a
 
 The test voice is one synthetic speaker per language, which is far easier than real people, so absolute error rates are optimistic; the benchmark is for comparing settings. And the battery profile's small model mishears roughly one Turkish word in three even on clean speech — Turkish conversation without the GPU is barely usable.
 
+## Knowing its limits
+
+### What went wrong in a live session
+
+Asked *"Can you create your own?"* after it had just said it could not create folders, Jarvis replied *"I can try creating a folder… Let me attempt that now"*, ran an unrelated web search, and then said it could not. It had never been told which of its abilities were switched off, or why.
+
+### What changed
+
+- **A capability statement is generated into the system prompt from the enabled tools** (`capability_statement` in `core/voice_tools.py`): what Jarvis can do, what it cannot do yet, that the missing actions wait for a spoken confirmation step, and that a refusal should come with the closest thing it *can* do. Because it is generated, enabling a tool later updates what Jarvis says about itself automatically.
+- **Persona rules:** never announce, attempt or claim an action without the tool call that does it; answer from tool results only, and say so when a result does not contain the answer; no code formatting, which cannot be spoken.
+
+### How it was measured
+
+`python -m bench.capability_eval --compare` sends 15 typed requests in Turkish and English to the real model with the real tool definitions, but with fake tools — nothing on disk is touched and nothing goes to the network. Each request has a known correct behaviour: call the right tool; decline a disabled action plainly; describe its abilities without inventing any; reply in the language of the request; quote no number the tools did not return; use no code formatting. One case replays the six turns that preceded the contradiction above, verbatim from the session transcript.
+
+The model is seeded; running the same list twice gives identical replies. Changing the list (and with it the order of requests) can shift wording slightly, because Ollama reuses cached context between requests — so conclusions rest only on differences that held across runs.
+
+| System prompt | Correct tool | Declined plainly | Abilities described honestly | Total |
+|---|---|---|---|---|
+| Before | 5/6 | 4/7 | 2/2 | 11/15 |
+| **After** | **6/6** | **6/7** | **2/2** | **14/15** |
+
+What the numbers summarise:
+
+- **Invented facts stopped.** Before, a web search that returned only *"python.org — Python release notes"* was answered with a specific version number and release date from the model's memory, presented as the search result. After: *"The latest Python release is available on the official Python website. Would you like me to fetch the release notes from there?"*
+- **A false claim stopped.** Before, asked in Turkish to create a folder, it replied that it was scanning the file system *and creating the folder* — which it cannot do.
+- **Refusals now come with an alternative**, e.g. *"I cannot create folders or directories yet as that feature is currently disabled. I can list what is inside your Projects folder if you'd like."*
+- **No more `code` in spoken replies.**
+
+The one remaining failure is the checker's, not the model's: a Turkish refusal phrased with a bare *"değil"* is not in the heuristic's list of negations. It was left as is rather than adjusting the checker after seeing the result. That reply's Turkish is also clumsy — the 9B model's Turkish is serviceable but less polished than its English.
+
+The replayed live case passed with **both** prompts: the contradiction could not be reproduced with the seed fixed, so it was most likely an unlucky sample at the voice assistant's temperature of 0.4. The new prompt removes the ambiguity that made such a reply possible; it cannot be shown to have fixed that single occurrence.
+
+### The reply voice now follows the reply
+
+The voice that reads a sentence used to follow the language Whisper detected in the *user's* speech. An English *"Hi Jarvis, how are you?"* spoken with a Turkish accent was labelled Turkish, so the correct English reply was read by the Turkish voice. Each sentence is now voiced by its own language (`voice/language.py`: Turkish-specific letters and frequent function words on each side), with the user's language only as the fallback. Tested on 27 sentences, most of them verbatim from that session, including Turkish sentences without Turkish letters and Turkish sentences containing English technical terms.
+
 ## Choosing models for the GPU
 
 ### Measured memory use

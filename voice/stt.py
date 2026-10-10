@@ -57,6 +57,7 @@ class Transcript:
 PHANTOM_PHRASES = frozenset({
     # observed here
     "you", "thank you", "e aí", "продолжение следует",
+    "jangan lupa like share dan subscribe",  # Indonesian, heard in a live session
     # widely reported
     "thanks for watching", "thank you for watching", "thank you so much for watching",
     "please subscribe", "altyazı m k", "izlediğiniz için teşekkür ederim",

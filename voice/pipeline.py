@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from voice.language import guess_language
 from voice.settings import DEFAULT, VoiceSettings
 from voice.stt import Transcriber, Transcript
 from voice.tts import SentenceStreamer, Synthesizer
@@ -268,7 +269,14 @@ class VoiceLoop:
     def _speak(self, sentence: str, language: str, timings: TurnTimings) -> bool:
         if self.player is None or self._interrupted.is_set():
             return False
-        chunks = list(self.synthesizer.synthesize(sentence, language))
+        # The voice follows the language of the sentence being spoken, not the
+        # label Whisper put on the user's speech. That label is unreliable on
+        # short utterances: an English question spoken with a Turkish accent
+        # was labelled Turkish, and the English reply was read by the Turkish
+        # voice. The user's language is only the fallback when the sentence
+        # gives no evidence either way.
+        voice_language = guess_language(sentence, fallback=language)
+        chunks = list(self.synthesizer.synthesize(sentence, voice_language))
         if not chunks:
             return False
         if not timings.first_audio:

@@ -11,10 +11,11 @@ Jarvis listens continuously, notices when you stop talking, transcribes your spe
 - **100% local speech pipeline** — speech recognition, language model and speech synthesis all run on-device. No cloud APIs, works offline (web search excepted).
 - **Streaming responses** — the first sentence is spoken as soon as it is generated, instead of waiting for the full answer.
 - **Barge-in** — talk over Jarvis and it stops speaking immediately.
-- **Turkish and English** — the language is detected per utterance; the reply voice switches with it.
+- **Turkish and English** — the language is detected per utterance, and each sentence of a reply is read by the voice of its own language.
 - **Does not answer noise** — room noise, breathing and keyboard clicks no longer come out as *"Thank you."*, and speech too garbled to understand is dropped instead of being acted on. Measured, see below.
 - **Tool calling** — lists directories, reads files, reports system temperatures, searches the web. Verified against real output, not just prompted to claim it.
 - **Conversation memory** — follow-up questions like *"how many were there?"* resolve against earlier turns.
+- **Knows its limits** — told exactly which actions are switched off and why, it declines them plainly and offers what it can do; it answers from tool results instead of filling gaps from memory. Measured before and after on 15 requests.
 - **Adapts to the GPU** — picks the largest models that fit the card's free memory, checks after loading that nothing spilled onto the CPU, and steps down on its own if it did. Lightweight CPU models when no GPU is available.
 
 ## Measured performance
@@ -134,7 +135,7 @@ pip install -r requirements-test.txt
 pytest
 ```
 
-101 tests, about one second, and **no microphone, GPU or Ollama server required**: the hardware and the model server are replaced by fakes, so what gets tested is the project's own logic — sentence splitting, profile selection, the VRAM planner (including what it would choose for cards from 4 to 32 GB), the spill-and-step-down loop, the end-of-speech state machine, the tool-calling loop and conversation memory. They run on every push on Ubuntu and Windows via GitHub Actions.
+139 tests, about one second, and **no microphone, GPU or Ollama server required**: the hardware and the model server are replaced by fakes, so what gets tested is the project's own logic — sentence splitting, profile selection, the VRAM planner (including what it would choose for cards from 4 to 32 GB), the spill-and-step-down loop, the end-of-speech state machine, the tool-calling loop and conversation memory. They run on every push on Ubuntu and Windows via GitHub Actions.
 
 The tests were checked by deliberately breaking the code: a one-character change to a threshold, and reverting a past bug fix, each turned exactly the right test red.
 
@@ -143,7 +144,7 @@ The tests were checked by deliberately breaking the code: a one-character change
 ```
 core/               hardware detection, VRAM planner, placement check, LLM client, voice tools
 voice/              the speech pipeline: VAD, STT, TTS, audio I/O, turn state machine, CLI
-bench/              latency.py (latency), stt_eval.py (recognition quality), vram.py (memory per model)
+bench/              latency, recognition quality, honesty about capabilities, memory per model
 tests/              automated tests (pytest)
 scripts/manual/     interactive checks that need a human (audio, windows, keyboard input)
 tools.py            tool implementations (files, terminal, web, browser, archives, hardware)
