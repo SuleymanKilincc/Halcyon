@@ -110,6 +110,61 @@ Detection runs per utterance and is restricted to the languages Jarvis has voice
 
 **Limitation:** mixing languages inside one sentence (Turkish with English technical terms, as developers often speak) is transcribed as a single language. Switching language between sentences works.
 
+## Speech-recognition quality
+
+### How it is measured
+
+`python -m bench.stt_eval` plays the same set of utterances through the real recogniser and scores the result; `--compare` runs a series of settings on identical audio and prints one table. No microphone is involved:
+
+- **Speech:** ten typical requests per language, synthesised with Piper.
+- **Conditions:** *clean*; *far* — room reverberation, 70% quieter, steady background noise at 10 dB SNR (someone talking across the room); *noisy* — the same at 3 dB SNR. Each degraded sentence is heard with three different noise draws.
+- **Non-speech:** five clips with no speech at all — near silence, room noise, keyboard clicks, breathing, mains hum. Any text produced for them is a hallucination.
+- **Word error rate (WER):** the number of word substitutions, insertions and deletions needed to turn the transcript into the reference, divided by the reference length. It can exceed 100% when the recogniser invents more words than were spoken.
+
+With 49 Turkish words in the clean column, **one word is about 2 points** — small differences are noise, and the decisions below rest only on differences larger than that.
+
+**Making it reproducible took three fixes.** Two runs of the same settings at first disagreed by more than 10 points:
+
+1. Piper synthesises speech with deliberate randomness (`noise_scale`, `noise_w`) so the voice is less robotic — the same sentence came out slightly different, even different in length, every time. The benchmark turns that randomness off.
+2. On very noisy audio Whisper retries with random sampling ("temperature fallback"). The benchmark seeds the sampler per clip.
+3. Background noise was drawn from one shared generator, so a clip's noise depended on the order clips were made in. Each clip now derives its noise from its own identity.
+
+After these, two runs produce identical tables (only latency varies by a few milliseconds).
+
+### Results
+
+GPU profile — `large-v3-turbo` on the RTX 4060. Each row adds one change to the row above.
+
+| Settings | clean TR | clean EN | far TR | far EN | noisy TR | noisy EN | phantoms | ms |
+|---|---|---|---|---|---|---|---|---|
+| before | 10.2% | 0.0% | 24.5% | 1.9% | 83.0% | 9.2% | **5/5** | 455 |
+| + second-stage VAD | 10.2% | 0.0% | 26.5% | 1.9% | 79.6% | 9.7% | **0/5** | 461 |
+| + phantom filter | 10.2% | 0.0% | 26.5% | 1.9% | 82.3% | 9.7% | 0/5 | 461 |
+| + hotwords | 12.2% | 0.0% | 21.8% | 1.4% | 73.5% | 10.1% | 0/5 | 459 |
+| **+ drop other languages (default)** | **12.2%** | **0.0%** | **21.1%** | **1.4%** | **71.4%** | **10.1%** | **0/5** | **459** |
+| default, beam 5 | 12.2% | 0.0% | 21.8% | 1.4% | 70.1% | 8.7% | 0/5 | 497 |
+
+Battery profile — `base` on the CPU (8 threads):
+
+| Settings | clean TR | clean EN | far TR | far EN | noisy TR | noisy EN | phantoms |
+|---|---|---|---|---|---|---|---|
+| before | 38.8% | 0.0% | 101.4% | 22.2% | 168.0% | 32.9% | 0/5 |
+| **default** | **38.8%** | **0.0%** | **90.5%** | **21.3%** | **116.3%** | **35.7%** | **0/5** |
+
+### What was adopted, and why
+
+- **Second-stage VAD** (`vad_filter`). Before it, Whisper "transcribed" all five non-speech clips — *"Thank you."* on room noise, keyboard and hum, *"you"* on breathing, Portuguese *"E aí"* on near silence, and on one occasion the Russian *"Продолжение следует..."* ("to be continued") on keyboard clicks. These are subtitle phrases from Whisper's training data, produced on silence. With the VAD that ships inside faster-whisper removing non-speech before decoding: 0/5, in every run. Its effect on word error rate is mixed and small; the hallucination fix alone justifies it.
+- **Phantom filter.** A transcript that is *exactly* one of those phrases is dropped. No effect in this benchmark, because the VAD already removed them all; kept as a second line of defence because real rooms produce speech-like noise.
+- **Hotwords** (`Python Jarvis masaüstü`). The largest gains: far-field Turkish 26.5% → 21.8%, noisy Turkish 82.3% → 73.5%. Because two of the test sentences contain hotwords, a separate paired run also scored only the sentences that contain none of them, and the error rate still fell (41.0% → 36.6%) — the gain is not just from naming words that appear in the test. Cost: one more error on clean Turkish.
+- **Drop other languages.** When Whisper detects a language Jarvis cannot speak, the utterance is treated as not understood and dropped, so the language model never acts on it. An audit of every dropped clip: 0 of 20 clean, 0 of 60 far, 8 of 60 noisy — and all 8 were unintelligible (the best of them, kept, would have read *"Son bir gün doceri aç"* for *"Son indirdiğim dosyayı aç"*). The alternative that was tried first — decoding such audio again in Turkish — produced Turkish nonsense instead, sometimes a repetition loop, and made the error rate worse. (The comparison table shows a one-word change in the far column for this row, which the separate audit did not reproduce; the cause was not isolated.)
+- **Not adopted: beam search.** `beam_size=5` brought no consistent gain and added ~35 ms per utterance.
+
+On the battery profile the same settings improve Turkish markedly in far-field and noisy speech; noisy English is slightly worse (six more errors out of 207 words).
+
+### What these numbers do not say
+
+The test voice is one synthetic speaker per language, which is far easier than real people, so absolute error rates are optimistic; the benchmark is for comparing settings. And the battery profile's small model mishears roughly one Turkish word in three even on clean speech — Turkish conversation without the GPU is barely usable.
+
 ## Choosing models for the GPU
 
 ### Measured memory use
@@ -212,6 +267,7 @@ This also explains an early benchmark that reported a near-identical ~3.7 s on e
 
 ## Not done yet
 
+- Saying "I didn't catch that" — speech that cannot be understood is currently dropped silently
 - Wake word ("Hey Jarvis")
 - Echo cancellation (headphones are required for now)
 - The desktop UI (`gui.py`) still uses the original pipeline

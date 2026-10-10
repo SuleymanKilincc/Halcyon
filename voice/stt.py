@@ -9,6 +9,7 @@ to a Google endpoint and stopped working without an internet connection.
 from __future__ import annotations
 
 import os
+import re
 import time
 from dataclasses import dataclass
 
@@ -34,10 +35,46 @@ class Transcript:
     language_probability: float
     duration_ms: int      # length of the audio
     latency_ms: int       # wall-clock time we spent transcribing it
+    # What Whisper itself detected, before it was constrained to the
+    # candidate languages. Kept so a wrong detection stays visible.
+    detected_language: str = ""
+    # Why the text was discarded, if it was (e.g. "phantom").
+    dropped: str = ""
 
     @property
     def is_empty(self) -> bool:
         return not self.text.strip()
+
+
+# Whisper was trained on video subtitles, and on silence or noise it tends to
+# "transcribe" the phrases that typically end a video. A transcript consisting
+# of exactly one of these is dropped. Compared after lowercasing and removing
+# punctuation. The first group was observed in bench/stt_eval.py on room noise,
+# keyboard clicks, breathing and mains hum; the rest are widely reported.
+#
+# Trade-off: someone who really says only "thank you" is ignored. Acceptable
+# for an assistant - it needs no reply - and far better than answering noise.
+PHANTOM_PHRASES = frozenset({
+    # observed here
+    "you", "thank you", "e aí", "продолжение следует",
+    # widely reported
+    "thanks for watching", "thank you for watching", "thank you so much for watching",
+    "please subscribe", "altyazı m k", "izlediğiniz için teşekkür ederim",
+    "izlediğiniz için teşekkürler", "субтитры сделал dimatorzok",
+})
+
+# Download sizes of the checkpoints, measured from the local cache, so a first
+# run can say what it is about to fetch before fetching it.
+DOWNLOAD_SIZES = {"tiny": "75 MB", "base": "145 MB", "small": "465 MB", "large-v3-turbo": "1.6 GB"}
+
+
+def normalise_for_match(text: str) -> str:
+    text = re.sub(r"[^\w\s]", " ", text.lower())
+    return " ".join(text.split())
+
+
+def is_phantom(text: str) -> bool:
+    return normalise_for_match(text) in PHANTOM_PHRASES
 
 
 def load_cuda_runtime() -> None:
@@ -114,12 +151,24 @@ class Transcriber:
             print("      Fix the GPU to get both. Set JARVIS_STT_MODEL to override.")
 
         started = time.perf_counter()
-        self._model = WhisperModel(
-            self.model_name,
+        options = dict(
             device=self.device,
             compute_type=self.compute_type,
             cpu_threads=self.settings.cpu_threads if self.device == "cpu" else 0,
         )
+        # Local cache first. Without local_files_only, every start asks the
+        # Hugging Face Hub whether a newer revision exists - a network request
+        # on each launch of an assistant described as fully local, and data
+        # spent on a metered connection. The network is used only when the
+        # model has genuinely never been downloaded, and the size is announced.
+        from huggingface_hub.errors import LocalEntryNotFoundError
+
+        try:
+            self._model = WhisperModel(self.model_name, local_files_only=True, **options)
+        except LocalEntryNotFoundError:
+            size = DOWNLOAD_SIZES.get(self.model_name, "unknown size")
+            print(f"[stt] Whisper '{self.model_name}' is not downloaded yet; downloading ({size})...")
+            self._model = WhisperModel(self.model_name, **options)
         self.load_seconds = time.perf_counter() - started
 
     def describe(self) -> str:
@@ -143,23 +192,44 @@ class Transcriber:
             return Transcript("", language or "", 0.0, duration_ms, 0)
 
         started = time.perf_counter()
-        segments, info = self._model.transcribe(
-            np.asarray(audio, dtype=np.float32),
-            language=language or self.settings.language,
-            beam_size=self.settings.beam_size,
-            vad_filter=self.settings.vad_filter,
-            condition_on_previous_text=False,  # stops cross-turn hallucination loops
-        )
-        text = " ".join(segment.text.strip() for segment in segments).strip()
-        latency_ms = int((time.perf_counter() - started) * 1000)
+        audio = np.asarray(audio, dtype=np.float32)
+        forced = language or self.settings.language
+        text, info = self._decode(audio, forced)
 
         detected = getattr(info, "language", "") or ""
+        final = detected
         probability = float(getattr(info, "language_probability", 0.0) or 0.0)
 
-        # Whisper will confidently label a Turkish sentence as some unrelated
-        # language on short audio. Constrain it to languages we can answer in.
-        if detected and detected not in self.settings.candidate_languages:
-            detected = self.settings.candidate_languages[0]
-            probability = 0.0
+        # Whisper sometimes detects a language we cannot answer in - on noisy
+        # Turkish it chose Portuguese, Russian, Chinese, and decoded the audio
+        # in that language. In the benchmark that only ever happened on audio
+        # that was unintelligible anyway, so it is treated as "not understood"
+        # (see STTSettings.drop_other_languages). The label still becomes the
+        # most probable candidate, so anything downstream stays in a language
+        # Jarvis can speak.
+        dropped = ""
+        candidates = self.settings.candidate_languages
+        if not forced and detected and detected not in candidates:
+            probs = dict(getattr(info, "all_language_probs", None) or [])
+            final = max(candidates, key=lambda code: probs.get(code, 0.0))
+            probability = probs.get(final, 0.0)
+            if self.settings.drop_other_languages and text:
+                text, dropped = "", "unintelligible"
 
-        return Transcript(text, detected, probability, duration_ms, latency_ms)
+        if self.settings.phantom_filter and text and is_phantom(text):
+            text, dropped = "", "phantom"
+
+        latency_ms = int((time.perf_counter() - started) * 1000)
+        return Transcript(text, final, probability, duration_ms, latency_ms,
+                          detected_language=detected, dropped=dropped)
+
+    def _decode(self, audio: np.ndarray, language: str | None):  # noqa: ANN202
+        segments, info = self._model.transcribe(
+            audio,
+            language=language,
+            beam_size=self.settings.beam_size,
+            vad_filter=self.settings.vad_filter,
+            hotwords=self.settings.hotwords,
+            condition_on_previous_text=False,  # stops cross-turn hallucination loops
+        )
+        return " ".join(segment.text.strip() for segment in segments).strip(), info

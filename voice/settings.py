@@ -93,8 +93,41 @@ class STTSettings:
     # physical core count is worth ~25-30% over CTranslate2's own default.
     cpu_threads: int = 8
 
-    beam_size: int = 1  # greedy; beam search buys little on short commands
-    vad_filter: bool = False  # our own VAD already trimmed the audio
+    # The choices below were measured with `python -m bench.stt_eval --compare`,
+    # which replays identical synthetic audio through each setting. The
+    # resulting table, and why each choice was made, is in docs/VOICE.md
+    # ("Speech-recognition quality"). Numbers are kept there, not here, so they
+    # exist in exactly one place.
+
+    # Greedy decoding: beam search (5) gave no consistent accuracy gain and
+    # added ~35 ms per utterance.
+    beam_size: int = 1
+
+    # Second-stage VAD inside faster-whisper, on top of our own endpointing:
+    # ours decides when a turn starts and ends, this one removes non-speech
+    # inside the utterance before Whisper sees it. It is what stops Whisper
+    # "transcribing" room noise, breathing and hum as "Thank you." or "you".
+    # The model ships with faster-whisper; nothing is downloaded.
+    vad_filter: bool = True
+
+    # When Whisper detects a language outside candidate_languages, treat the
+    # utterance as not understood and drop it, so the language model never
+    # acts on it and Jarvis stays silent - the pipeline's rule for anything it
+    # is not sure was speech. In the benchmark this only happened on very
+    # noisy audio, every such clip was unintelligible, and decoding it again
+    # in Turkish produced Turkish nonsense instead. When False, the original
+    # behaviour applies: the text is kept and only relabelled.
+    drop_other_languages: bool = True
+
+    # Drop transcripts that are exactly one of Whisper's well-known phantom
+    # phrases (PHANTOM_PHRASES in voice/stt.py). A second line of defence:
+    # in the benchmark the VAD above already removed every phantom.
+    phantom_filter: bool = True
+
+    # Words to bias recognition towards (faster-whisper `hotwords`). Helped
+    # Turkish clearly in far-field and noisy speech, including on sentences
+    # that contain none of these words.
+    hotwords: str | None = "Python Jarvis masaüstü"
 
     # Utterances shorter than this are almost always noise that slipped past
     # the VAD. Transcribing them wastes a GPU round trip.

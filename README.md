@@ -12,6 +12,7 @@ Jarvis listens continuously, notices when you stop talking, transcribes your spe
 - **Streaming responses** — the first sentence is spoken as soon as it is generated, instead of waiting for the full answer.
 - **Barge-in** — talk over Jarvis and it stops speaking immediately.
 - **Turkish and English** — the language is detected per utterance; the reply voice switches with it.
+- **Does not answer noise** — room noise, breathing and keyboard clicks no longer come out as *"Thank you."*, and speech too garbled to understand is dropped instead of being acted on. Measured, see below.
 - **Tool calling** — lists directories, reads files, reports system temperatures, searches the web. Verified against real output, not just prompted to claim it.
 - **Conversation memory** — follow-up questions like *"how many were there?"* resolve against earlier turns.
 - **Adapts to the GPU** — picks the largest models that fit the card's free memory, checks after loading that nothing spilled onto the CPU, and steps down on its own if it did. Lightweight CPU models when no GPU is available.
@@ -27,7 +28,7 @@ Measured on the development machine (AMD Ryzen 7 7735HS, 32 GB RAM, RTX 4060 Lap
 | **First audio** | best 1.8 s | **1.1–1.6 s** |
 | Turkish recognition accuracy | weak (small model) | good |
 
-Reproduce with `python -m bench.latency --llm` — the benchmark synthesises speech and feeds it through the real pipeline, so no microphone is needed.
+Reproduce with `python -m bench.latency --llm` — the benchmark synthesises speech and feeds it through the real pipeline, so no microphone is needed. Recognition quality (word error rate in clean, far-field and noisy conditions, and hallucinations on non-speech) is measured with `python -m bench.stt_eval`; results are in [`docs/VOICE.md`](docs/VOICE.md#speech-recognition-quality).
 
 ## How it works
 
@@ -93,6 +94,7 @@ A few problems that shaped the design. Details and raw measurements are in [`doc
 
 - **A bigger context window was slower.** At a 16k-token context the 9B model no longer fit in 8 GB of VRAM; Ollama placed 16% of it on the CPU, which dragged every token down to CPU speed. At 8k it runs 100% on the GPU. The setting that fits beats the setting that is nominally larger.
 - **The benchmark said 140 ms, real use said 2.2 s.** Both were right. The benchmark sent requests back to back; a person pauses to speak and listen, and in that gap the laptop GPU drops into a low-power state that costs ~2 s to leave. The fix moves the wake-up to the moment you *start* speaking, so it overlaps with time that is already being spent.
+- **Making the speech benchmark reproducible took three fixes.** Two runs of the same settings disagreed by over 10 points of error rate. The causes: Piper synthesises speech with deliberate randomness, so the test audio itself changed between runs; Whisper retries noisy audio with random sampling; and the background noise depended on the order clips were generated in. With all three pinned, two runs now produce identical tables — and one earlier conclusion reversed: re-decoding misdetected audio in Turkish, which had looked neutral, actually made it worse.
 - **GPU speech recognition worked by accident.** faster-whisper finds NVIDIA's cuBLAS library only if something has already loaded it, and PyTorch happened to be imported first. Measuring Whisper's memory in isolation crashed with *"cublas64_12.dll is not found"*. The dependency is now explicit instead of depending on import order.
 - **The measuring tool was measuring itself.** An early benchmark reported a near-identical ~3.7 s on every input. It was abandoning each response stream after the first sentence while the server kept generating, so every measurement queued behind the previous one. Suspiciously uniform numbers turned out to be the clue.
 
@@ -132,7 +134,7 @@ pip install -r requirements-test.txt
 pytest
 ```
 
-84 tests, about one second, and **no microphone, GPU or Ollama server required**: the hardware and the model server are replaced by fakes, so what gets tested is the project's own logic — sentence splitting, profile selection, the VRAM planner (including what it would choose for cards from 4 to 32 GB), the spill-and-step-down loop, the end-of-speech state machine, the tool-calling loop and conversation memory. They run on every push on Ubuntu and Windows via GitHub Actions.
+101 tests, about one second, and **no microphone, GPU or Ollama server required**: the hardware and the model server are replaced by fakes, so what gets tested is the project's own logic — sentence splitting, profile selection, the VRAM planner (including what it would choose for cards from 4 to 32 GB), the spill-and-step-down loop, the end-of-speech state machine, the tool-calling loop and conversation memory. They run on every push on Ubuntu and Windows via GitHub Actions.
 
 The tests were checked by deliberately breaking the code: a one-character change to a threshold, and reverting a past bug fix, each turned exactly the right test red.
 
@@ -141,7 +143,7 @@ The tests were checked by deliberately breaking the code: a one-character change
 ```
 core/               hardware detection, VRAM planner, placement check, LLM client, voice tools
 voice/              the speech pipeline: VAD, STT, TTS, audio I/O, turn state machine, CLI
-bench/              latency.py (microphone-free latency), vram.py (memory use per model)
+bench/              latency.py (latency), stt_eval.py (recognition quality), vram.py (memory per model)
 tests/              automated tests (pytest)
 scripts/manual/     interactive checks that need a human (audio, windows, keyboard input)
 tools.py            tool implementations (files, terminal, web, browser, archives, hardware)
