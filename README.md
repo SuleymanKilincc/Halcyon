@@ -151,7 +151,7 @@ tools.py            tool implementations (files, terminal, web, browser, archive
 agent.py            text-mode agent with the full tool set (LangGraph)
 gui.py              desktop UI (still on the legacy voice pipeline)
 database.py         SQLite session storage
-docs/               VOICE.md (pipeline + measurements), system report (PDF)
+docs/               VOICE.md (pipeline + measurements); archive/HISTORY.md (how the project got here)
 ```
 
 ## Limitations
