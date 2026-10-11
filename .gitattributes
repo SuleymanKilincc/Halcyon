@@ -1,0 +1,4 @@
+# Shell scripts must keep LF line endings or Linux/macOS cannot run them;
+# batch files must be CRLF for cmd.exe. Everything else: let git decide.
+*.sh  text eol=lf
+*.bat text eol=crlf
