@@ -184,7 +184,7 @@ Ordered by what unlocks the most next. Nothing here is promised for a date; item
 
 **Then**
 - [ ] **Persistent memory** with semantic search, stored locally.
-- [ ] **Barge-in:** interrupt it by speaking while it talks.
+- [ ] **Echo cancellation**, so barge-in works without headphones.
 - [ ] **Speaker verification:** react to the owner's voice only.
 - [ ] **More natural voice.** XTTS-v2 is ruled out (non-commercial license); Chatterbox Multilingual (MIT, lists Turkish) is the candidate to evaluate against the 8 GB budget.
 - [ ] **Better Turkish on battery mode**, where the small recognition model is weakest.
@@ -196,6 +196,7 @@ Ordered by what unlocks the most next. Nothing here is promised for a date; item
 - [ ] **Coding assistant:** read and edit a project, run its tests.
 - [ ] **Plugin system** for adding tools.
 - [ ] More languages.
+- [ ] **Client–server split:** the heavy models as a service (possibly in a container) and a thin client that owns the microphone and speaker.
 
 ## License
 
