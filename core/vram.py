@@ -22,7 +22,10 @@ All sizes are GiB. Re-measure with `python -m bench.vram`.
 
 from __future__ import annotations
 
+import json
+import os
 import subprocess
+import urllib.request
 from dataclasses import dataclass
 
 # --------------------------------------------------------------- measurements
@@ -163,3 +166,28 @@ def query_free_vram_gib() -> tuple[float, float] | None:
         return None
     free_mib, total_mib = (float(v) for v in out.stdout.strip().splitlines()[0].split(","))
     return free_mib / 1024, total_mib / 1024
+
+
+def resident_vram_gib(payload: dict) -> float:
+    """GiB of GPU memory held by the models listed in an Ollama /api/ps reply."""
+    return sum(m.get("size_vram", 0) for m in payload.get("models", [])) / 2**30
+
+
+def ollama_resident_gib(base_url: str | None = None, timeout: float = 2.0) -> float:
+    """
+    GPU memory currently held by models Ollama has loaded, 0.0 if it cannot be asked.
+
+    Ollama keeps a model in memory for minutes after its last request. That
+    memory counts as "used" in nvidia-smi, but it is not lost: Ollama reuses it
+    for the same model and evicts idle models to make room for another. Counting
+    it as unavailable made a restart within that window plan for the CPU. The
+    placement check after loading is the safety net if this turns out optimistic.
+    """
+    host = base_url or os.getenv("OLLAMA_HOST") or "http://localhost:11434"
+    if "://" not in host:
+        host = "http://" + host
+    try:
+        with urllib.request.urlopen(host.rstrip("/") + "/api/ps", timeout=timeout) as reply:
+            return resident_vram_gib(json.load(reply))
+    except Exception:  # noqa: BLE001 - Ollama not running is a normal case
+        return 0.0

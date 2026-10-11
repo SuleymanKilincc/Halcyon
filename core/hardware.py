@@ -118,11 +118,13 @@ def detect(*, probe_dgpu: bool = True) -> Hardware:
 
     hw.cuda, hw.gpu_name, hw.vram_gb = _detect_cuda()
     if hw.cuda:
-        from core.vram import query_free_vram_gib
+        from core.vram import ollama_resident_gib, query_free_vram_gib
 
         reading = query_free_vram_gib()
         if reading is not None:
-            hw.vram_free_gb = reading[0]
+            # Memory an idle Ollama model still holds is available to us.
+            free, total = reading
+            hw.vram_free_gb = min(total, free + ollama_resident_gib())
 
     # Only worth the PowerShell round trip when there is no working GPU: if
     # CUDA already answers, we do not care what else is installed.

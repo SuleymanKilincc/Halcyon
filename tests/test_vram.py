@@ -133,3 +133,26 @@ def test_ladder_is_ordered_from_most_to_least_memory_within_each_model():
 def test_unmeasured_model_is_flagged_as_an_estimate():
     assert Plan("qwen3.5:27b", 8192, "large-v3-turbo").estimated
     assert not Plan("qwen3.5:9b", 8192, "large-v3-turbo").estimated
+
+
+# ------------------------------------------------ memory held by an idle Ollama model
+
+def test_memory_held_by_loaded_models_is_summed():
+    from core.vram import resident_vram_gib
+
+    payload = {"models": [{"name": "a", "size_vram": 5 * 2**30}, {"name": "b", "size_vram": 2**30}]}
+    assert resident_vram_gib(payload) == 6.0
+
+
+def test_no_loaded_models_hold_nothing():
+    from core.vram import resident_vram_gib
+
+    assert resident_vram_gib({}) == 0.0
+    assert resident_vram_gib({"models": []}) == 0.0
+
+
+def test_an_unreachable_ollama_counts_as_zero():
+    from core.vram import ollama_resident_gib
+
+    # Port 9 (discard) refuses connections; a normal "Ollama is not running" case.
+    assert ollama_resident_gib("http://127.0.0.1:9", timeout=0.5) == 0.0
