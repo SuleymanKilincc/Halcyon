@@ -170,12 +170,28 @@ Stated plainly, because they matter if you try it:
 
 ## Roadmap
 
-- [ ] "Hey Jarvis" wake word
-- [ ] Screen understanding — the model already supports vision
-- [ ] Spoken confirmation layer + audit log, unlocking write/delete/shell tools by voice
-- [ ] Persistent memory with semantic search
-- [ ] Desktop UI on the new voice pipeline
-- [ ] More natural voice (XTTS-v2)
+Ordered by what unlocks the most next. Nothing here is promised for a date; items move up when the one before them is measured and tested.
+
+**Next**
+- [ ] **Wake word** ("Hey ...") so it only listens when addressed. Removes the accidental replies to side conversations and to speech-model phantoms.
+- [ ] **Spoken confirmation layer + audit log.** Asks before it writes, deletes or runs anything, and logs what it did. Unlocks the file and shell tools by voice.
+- [ ] **Faster tool turns.** Tool-using replies currently take 3-4.5 s to first audio; speaking a short acknowledgement while the tool runs hides most of it.
+- [ ] **Easy setup.** A one-command installer that checks the GPU, picks the model size, and announces every download and its size before fetching it; later, a packaged Windows installer. The GPU planner and the download-size announcements already exist; the installer wrapped around them does not.
+
+**Then**
+- [ ] **Persistent memory** with semantic search, stored locally.
+- [ ] **Barge-in:** interrupt it by speaking while it talks.
+- [ ] **Speaker verification:** react to the owner's voice only.
+- [ ] **More natural voice** (XTTS-v2).
+- [ ] **Better Turkish on battery mode**, where the small recognition model is weakest.
+- [ ] **Desktop UI** on the new voice pipeline.
+
+**Later**
+- [ ] **Screen understanding** — the model already supports vision.
+- [ ] **Screen control** (click, type), behind the same confirmation layer.
+- [ ] **Coding assistant:** read and edit a project, run its tests.
+- [ ] **Plugin system** for adding tools.
+- [ ] More languages.
 
 ## License
 

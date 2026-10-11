@@ -11,6 +11,11 @@ on:
     branches: [master]
   pull_request:
 
+# The job only reads the repository; a compromised dependency must not be able
+# to push code or change releases with the workflow's token.
+permissions:
+  contents: read
+
 jobs:
   test:
     name: ${{ matrix.os }} / Python 3.10

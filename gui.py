@@ -6,6 +6,7 @@ Iron Man / Stark Industries inspired desktop interface with voice capabilities
 import customtkinter as ctk
 import threading
 import queue
+import subprocess
 import time
 import math
 from typing import Optional
@@ -1239,9 +1240,9 @@ class JarvisGUI:
                 if platform.system() == "Windows":
                     os.startfile(temp_path)
                 elif platform.system() == "Darwin":
-                    os.system(f"afplay {temp_path}")
+                    subprocess.run(["afplay", temp_path], check=False)
                 else:
-                    os.system(f"aplay {temp_path}")
+                    subprocess.run(["aplay", temp_path], check=False)
             
             # Clean up temp file
             os.unlink(temp_path)
