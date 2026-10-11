@@ -154,7 +154,7 @@ tools.py            tool implementations (files, terminal, web, browser, archive
 agent.py            text-mode agent with the full tool set (LangGraph)
 gui.py              desktop UI (still on the legacy voice pipeline)
 database.py         SQLite session storage
-docs/               VOICE.md (pipeline + measurements); archive/HISTORY.md (how the project got here)
+docs/               VOICE.md (pipeline + measurements), LICENSES.md, MEMORY.md (embedding model choice); archive/HISTORY.md (how the project got here)
 ```
 
 ## Limitations
@@ -170,6 +170,7 @@ Stated plainly, because they matter if you try it:
 - **Mixed-language sentences** (Turkish with English terms inside one sentence) are transcribed as a single language.
 - **Voice conversations are not persisted** yet; memory lasts for the session.
 - A 9B local model is far weaker than frontier cloud models at multi-step reasoning, and can make things up.
+- **The Piper voices are non-commercial** (CC BY-NC-SA 4.0) and Piper's engine is GPL-licensed; see [docs/LICENSES.md](docs/LICENSES.md) before using this commercially.
 
 ## Roadmap
 
@@ -185,7 +186,7 @@ Ordered by what unlocks the most next. Nothing here is promised for a date; item
 - [ ] **Persistent memory** with semantic search, stored locally.
 - [ ] **Barge-in:** interrupt it by speaking while it talks.
 - [ ] **Speaker verification:** react to the owner's voice only.
-- [ ] **More natural voice** (XTTS-v2).
+- [ ] **More natural voice.** XTTS-v2 is ruled out (non-commercial license); Chatterbox Multilingual (MIT, lists Turkish) is the candidate to evaluate against the 8 GB budget.
 - [ ] **Better Turkish on battery mode**, where the small recognition model is weakest.
 - [ ] **Desktop UI** on the new voice pipeline.
 
@@ -198,4 +199,4 @@ Ordered by what unlocks the most next. Nothing here is promised for a date; item
 
 ## License
 
-[MIT](LICENSE) © 2026 Süleyman Kılınç
+[MIT](LICENSE) © 2026 Süleyman Kılınç. Third-party models and voices carry their own terms, summarised in [docs/LICENSES.md](docs/LICENSES.md).
