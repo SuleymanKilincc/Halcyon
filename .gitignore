@@ -47,14 +47,14 @@ workspace/*
 .DS_Store
 Thumbs.db
 
-# Jarvis runtime state
-jarvis_sessions.db
+# Runtime state
+halcyon_sessions.db
 *.db-journal
 models/
 *.onnx
 *.onnx.json
 *.gguf
-.jarvis_cache/
+.halcyon_cache/
 
 # Audio scratch
 *.wav
@@ -62,3 +62,7 @@ models/
 
 # Local copy of the Turkish project report (kept outside version control)
 Jarvis_Sistem_Raporu.pdf
+
+# Names used before the project was renamed
+jarvis_sessions.db
+.jarvis_cache/

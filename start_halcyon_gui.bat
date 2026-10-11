@@ -1,9 +1,11 @@
+cd /d "%~dp0"
 @echo off
-REM Jarvis AI Agent Launcher for Windows
-REM This script starts the Jarvis agent with proper checks
+REM Halcyon AI Agent GUI Launcher for Windows
+REM This script starts the Halcyon GUI with voice capabilities
 
 echo ========================================
-echo   JARVIS AI AGENT LAUNCHER
+echo   HALCYON GUI LAUNCHER
+echo   Iron Man Interface Edition
 echo ========================================
 echo.
 
@@ -22,14 +24,13 @@ if exist "venv\Scripts\activate.bat" (
     call venv\Scripts\activate.bat
 ) else (
     echo WARNING: No virtual environment found
-    echo Consider creating one with: python -m venv venv
     echo.
 )
 
 REM Check if dependencies are installed
-python -c "import langchain" >nul 2>&1
+python -c "import customtkinter" >nul 2>&1
 if errorlevel 1 (
-    echo ERROR: Dependencies not installed
+    echo ERROR: GUI dependencies not installed
     echo Please run: pip install -r requirements.txt
     pause
     exit /b 1
@@ -44,9 +45,19 @@ if errorlevel 1 (
     pause
 )
 
-REM Launch Jarvis
-echo Starting Jarvis...
+REM Launch Halcyon GUI
+echo Starting Halcyon GUI...
 echo.
-python agent.py
+echo ========================================
+echo   INITIALIZING ARC REACTOR...
+echo ========================================
+echo.
+python gui.py
 
-pause
+if errorlevel 1 (
+    echo.
+    echo ========================================
+    echo   ERROR OCCURRED
+    echo ========================================
+    pause
+)

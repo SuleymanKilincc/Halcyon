@@ -12,7 +12,7 @@ import pytest
 from voice.language import guess_language
 
 ENGLISH = [
-    # Jarvis's replies in a real session
+    # Halcyon's replies in a real session
     "I am functioning well, sir. How may I assist you today?",
     "Your desktop contains several application shortcuts, including Steam and Chrome.",
     "That path does not exist, sir.",

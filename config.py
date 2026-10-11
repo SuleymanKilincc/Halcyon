@@ -1,5 +1,5 @@
 """
-Configuration module for Jarvis AI Agent.
+Configuration module for Halcyon AI Agent.
 Handles Ollama model settings, system prompts, and environment constants.
 """
 
@@ -75,7 +75,7 @@ MAX_OUTPUT_LENGTH = 5000
 # SYSTEM PROMPTS
 # ============================================================================
 
-SYSTEM_PROMPT = """You are Jarvis, an advanced AI assistant with the ability to interact with the local system.
+SYSTEM_PROMPT = """You are Halcyon, an advanced AI assistant with the ability to interact with the local system.
 
 You have access to the following capabilities:
 1. **Terminal Access**: Execute shell commands on the local system
@@ -107,7 +107,7 @@ When solving tasks, follow this pattern:
 Be concise but thorough. Prioritize accuracy and safety over speed.
 """
 
-AGENT_DESCRIPTION = """Jarvis - Your Local AI Assistant
+AGENT_DESCRIPTION = """Halcyon - Your Local AI Assistant
 
 Powered by: {model}
 Workspace: {workspace}
@@ -116,7 +116,7 @@ Available Commands:
 - /help     - Show available commands
 - /reset    - Clear conversation history
 - /workspace - Show workspace directory
-- /exit     - Exit Jarvis
+- /exit     - Exit Halcyon
 
 Type your request or ask me anything!
 """
@@ -127,7 +127,7 @@ Type your request or ask me anything!
 
 # Color codes for terminal output (if colorama is used)
 COLORS = {
-    "jarvis": "\033[94m",      # Blue
+    "halcyon": "\033[94m",      # Blue
     "user": "\033[92m",        # Green
     "warning": "\033[93m",     # Yellow
     "error": "\033[91m",       # Red
@@ -137,7 +137,7 @@ COLORS = {
 
 # CLI prompts
 CLI_PROMPT_USER = "You: "
-CLI_PROMPT_JARVIS = "Jarvis: "
+CLI_PROMPT_HALCYON = "Halcyon: "
 
 # ============================================================================
 # WEB SEARCH CONFIGURATION

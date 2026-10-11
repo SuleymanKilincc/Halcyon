@@ -140,7 +140,7 @@ class SpeechDetector:
 
 class BargeInDetector:
     """
-    A deliberately trigger-shy detector used only while Jarvis is speaking.
+    A deliberately trigger-shy detector used only while Halcyon is speaking.
 
     It is a separate object from the main detector, with its own threshold and
     its own Silero state, because the two answer different questions: the main

@@ -1,16 +1,18 @@
-# Jarvis
+# Halcyon
 
-[![tests](https://github.com/SuleymanKilincc/Jarvis/actions/workflows/tests.yml/badge.svg)](https://github.com/SuleymanKilincc/Jarvis/actions/workflows/tests.yml)
+[![tests](https://github.com/SuleymanKilincc/Halcyon/actions/workflows/tests.yml/badge.svg)](https://github.com/SuleymanKilincc/Halcyon/actions/workflows/tests.yml)
 
 **A fully local, voice-driven AI assistant.** You speak, it answers out loud — in Turkish or English — and nothing leaves your machine.
 
-Jarvis listens continuously, notices when you stop talking, transcribes your speech, thinks with a local language model, can call tools on your computer, and starts speaking its answer before it has finished generating it. You can interrupt it mid-sentence. It detects whether your laptop's discrete GPU is available and picks a matching set of models on its own.
+Halcyon listens continuously, notices when you stop talking, transcribes your speech, thinks with a local language model, can call tools on your computer, and starts speaking its answer before it has finished generating it. You can interrupt it mid-sentence. It detects whether your laptop's discrete GPU is available and picks a matching set of models on its own.
+
+**Why "Halcyon"?** It is pronounced *HAL-see-un*. In Greek myth the halcyon is a bird that calms the sea, and "halcyon days" means a calm, peaceful time, which is the manner the assistant aims for. The project was called Jarvis until October 2026.
 
 ## Highlights
 
 - **100% local speech pipeline** — speech recognition, language model and speech synthesis all run on-device. No cloud APIs, works offline (web search excepted).
 - **Streaming responses** — the first sentence is spoken as soon as it is generated, instead of waiting for the full answer.
-- **Barge-in** — talk over Jarvis and it stops speaking immediately.
+- **Barge-in** — talk over Halcyon and it stops speaking immediately.
 - **Turkish and English** — the language is detected per utterance, and each sentence of a reply is read by the voice of its own language.
 - **Does not answer noise** — room noise, breathing and keyboard clicks no longer come out as *"Thank you."*, and speech too garbled to understand is dropped instead of being acted on. Measured, see below.
 - **Tool calling** — lists directories, reads files, reports system temperatures, searches the web. Verified against real output, not just prompted to claim it.
@@ -55,11 +57,11 @@ flowchart TD
 
 ### Adapting to the GPU
 
-Jarvis runs two models on the same card — Whisper for speech and a language model through Ollama — and the right pair depends on how much memory is free. A fixed rule cannot serve both a 4 GB and a 32 GB card: the first overflows, the second sits mostly idle. So the choice is made in two layers:
+Halcyon runs two models on the same card — Whisper for speech and a language model through Ollama — and the right pair depends on how much memory is free. A fixed rule cannot serve both a 4 GB and a 32 GB card: the first overflows, the second sits mostly idle. So the choice is made in two layers:
 
 ```mermaid
 flowchart TD
-    START([Jarvis starts]) --> CUDA{CUDA available?}
+    START([Halcyon starts]) --> CUDA{CUDA available?}
     CUDA -- no --> OFF{"Discrete GPU present<br/>but switched off?"}
     OFF -- yes --> WARN["CPU profile + a hint<br/>to re-enable the GPU"]
     OFF -- no --> BAT["CPU profile<br/>Whisper base + qwen3.5:2b"]
@@ -73,7 +75,7 @@ flowchart TD
 ```
 
 1. **Plan.** Every component's memory use was measured (`python -m bench.vram`), and the planner picks the best configuration that fits the card's *free* memory, from a ladder ordered by preference: a larger language model first, then the large Whisper (the small ones are poor at Turkish), then a longer context.
-2. **Verify.** Ollama keeps more headroom than the sizes it reports, and how much is not documented — so a plan can fit on paper and still spill. After loading, Jarvis asks Ollama how much of the model actually landed on the GPU, and steps down if any of it spilled. This is what makes it correct on cards that were never tested: forced onto a configuration known to spill on the 8 GB card, it detected *"only 84% on the GPU"* and stepped down on its own.
+2. **Verify.** Ollama keeps more headroom than the sizes it reports, and how much is not documented — so a plan can fit on paper and still spill. After loading, Halcyon asks Ollama how much of the model actually landed on the GPU, and steps down if any of it spilled. This is what makes it correct on cards that were never tested: forced onto a configuration known to spill on the 8 GB card, it detected *"only 84% on the GPU"* and stepped down on its own.
 
 What the planner chooses for typical cards (free memory after the desktop's share):
 
@@ -85,9 +87,9 @@ What the planner chooses for typical cards (free memory after the desktop's shar
 | RTX 3060 / 4080, 12–16 GB | qwen3.5:9b | 32k | Whisper large-v3-turbo |
 | RTX 4090 / 5090, 24–32 GB | qwen3.5:27b | 32k | Whisper large-v3-turbo |
 
-Only the 8 GB configuration (bold) has been run end to end. The others are the planner's choices from measured component sizes; the 27B figures are estimates because that model has not been downloaded on the development machine, and the verification step corrects any of them on real hardware. If a better model would fit but is not installed, Jarvis uses the best installed one and says which to pull.
+Only the 8 GB configuration (bold) has been run end to end. The others are the planner's choices from measured component sizes; the 27B figures are estimates because that model has not been downloaded on the development machine, and the verification step corrects any of them on real hardware. If a better model would fit but is not installed, Halcyon uses the best installed one and says which to pull.
 
-On laptops the discrete GPU can also be powered off entirely (for example in an "Eco" GPU mode). Python's usual hardware queries then report *no GPU at all*. Jarvis asks Windows directly (`Get-PnpDevice`), which tells *"installed but disconnected"* apart from *"absent"*, so it explains why it is on the CPU instead of silently degrading.
+On laptops the discrete GPU can also be powered off entirely (for example in an "Eco" GPU mode). Python's usual hardware queries then report *no GPU at all*. Halcyon asks Windows directly (`Get-PnpDevice`), which tells *"installed but disconnected"* apart from *"absent"*, so it explains why it is on the CPU instead of silently degrading.
 
 ## Engineering notes
 
@@ -118,9 +120,10 @@ Everything is Python 3.10.
 ## Usage
 
 ```bash
+start_halcyon.bat                   # Windows launcher: checks Python, dependencies and Ollama, then runs the line below
 python -m voice.cli --info          # show detected hardware and the chosen profile
 python -m voice.cli                 # echo mode: test your microphone and speakers, no LLM
-python -m voice.cli --llm           # talk to Jarvis
+python -m voice.cli --llm           # talk to Halcyon
 python -m voice.cli --llm --profile battery   # force the CPU profile
 python -m voice.cli --llm --profile gpu-4b-8k # force a specific GPU configuration
 python -m voice.cli --devices       # list audio devices, then pass --input / --output
@@ -173,7 +176,7 @@ Stated plainly, because they matter if you try it:
 Ordered by what unlocks the most next. Nothing here is promised for a date; items move up when the one before them is measured and tested.
 
 **Next**
-- [ ] **Wake word** ("Hey ...") so it only listens when addressed. Removes the accidental replies to side conversations and to speech-model phantoms.
+- [ ] **Wake word** ("Hey Halcyon") so it only listens when addressed. Removes the accidental replies to side conversations and to speech-model phantoms. Needs a dedicated audio detector: the recogniser writes the name correctly only 10 times in 12, even with a hint ([measured](docs/VOICE.md#can-the-recogniser-write-the-name)).
 - [ ] **Spoken confirmation layer + audit log.** Asks before it writes, deletes or runs anything, and logs what it did. Unlocks the file and shell tools by voice.
 - [ ] **Faster tool turns.** Tool-using replies currently take 3-4.5 s to first audio; speaking a short acknowledgement while the tool runs hides most of it.
 - [ ] **Easy setup.** A one-command installer that checks the GPU, picks the model size, and announces every download and its size before fetching it; later, a packaged Windows installer. The GPU planner and the download-size announcements already exist; the installer wrapped around them does not.

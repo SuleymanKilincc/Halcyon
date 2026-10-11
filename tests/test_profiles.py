@@ -15,10 +15,10 @@ from voice.settings import VoiceSettings
 
 @pytest.fixture(autouse=True)
 def no_profile_override(monkeypatch):
-    # resolve() honours the JARVIS_PROFILE environment variable. If it happens
+    # resolve() honours the HALCYON_PROFILE environment variable. If it happens
     # to be set on the machine running the tests, every test below would be
     # testing the override instead of the detection logic.
-    monkeypatch.delenv("JARVIS_PROFILE", raising=False)
+    monkeypatch.delenv("HALCYON_PROFILE", raising=False)
 
 
 def gpu(total_gb: float, free_gb: float | None = None) -> Hardware:
@@ -102,7 +102,7 @@ def test_auto_override_means_detect():
 
 
 def test_environment_variable_override(monkeypatch):
-    monkeypatch.setenv("JARVIS_PROFILE", "battery")
+    monkeypatch.setenv("HALCYON_PROFILE", "battery")
     assert resolve(gpu(8.0, 7.07)).name == BATTERY.name
 
 

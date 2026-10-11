@@ -1,5 +1,5 @@
 """
-Jarvis AI Agent - Advanced GUI Interface with Session Management
+Halcyon AI Agent - Advanced GUI Interface with Session Management
 Iron Man / Stark Industries inspired desktop interface with:
 - Sidebar for chat session management
 - Database-backed conversation history
@@ -18,7 +18,7 @@ import pyttsx3
 from langdetect import detect, LangDetectException
 from datetime import datetime
 
-from agent import JarvisAgent
+from agent import HalcyonAgent
 import config
 from database import db_manager
 

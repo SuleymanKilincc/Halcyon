@@ -1,9 +1,9 @@
 #!/bin/bash
-# Jarvis AI Agent GUI Launcher for Linux/macOS
-# This script starts the Jarvis GUI with voice capabilities
+# Halcyon AI Agent GUI Launcher for Linux/macOS
+# This script starts the Halcyon GUI with voice capabilities
 
 echo "========================================"
-echo "   JARVIS GUI LAUNCHER"
+echo "   HALCYON GUI LAUNCHER"
 echo "   Iron Man Interface Edition"
 echo "========================================"
 echo
@@ -45,8 +45,8 @@ if [ $? -ne 0 ]; then
     read -p "Press Enter to continue anyway..."
 fi
 
-# Launch Jarvis GUI
-echo "Starting Jarvis GUI..."
+# Launch Halcyon GUI
+echo "Starting Halcyon GUI..."
 echo
 echo "========================================"
 echo "   INITIALIZING ARC REACTOR..."

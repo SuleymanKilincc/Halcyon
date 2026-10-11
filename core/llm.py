@@ -49,8 +49,8 @@ from typing import Any
 
 from core.profiles import Profile
 
-JARVIS_PERSONA = (
-    "You are Jarvis: a calm, loyal assistant running entirely on the user's own "
+HALCYON_PERSONA = (
+    "You are Halcyon: a calm, loyal assistant running entirely on the user's own "
     "computer. Your manner is measured, confident and economical, never gushing.\n"
     "Address the user respectfully where it falls naturally, not in every "
     "sentence: 'sir' in English, 'efendim' in Turkish.\n"
@@ -74,7 +74,7 @@ GIVE_UP = {
 }
 
 # Kept for callers that want the plain assistant with no persona or tools.
-SPEECH_SYSTEM_PROMPT = JARVIS_PERSONA
+SPEECH_SYSTEM_PROMPT = HALCYON_PERSONA
 
 # How many past turns to carry. Each turn is a user message plus an assistant
 # message, so this is 8 exchanges - enough for "show me that one" to resolve,
@@ -91,7 +91,7 @@ class SpeechLLM:
         *,
         temperature: float = 0.4,
         base_url: str | None = None,
-        system: str = JARVIS_PERSONA,
+        system: str = HALCYON_PERSONA,
         tools: list[Any] | None = None,
         history_turns: int = DEFAULT_HISTORY_TURNS,
     ) -> None:
@@ -196,7 +196,7 @@ class SpeechLLM:
                 with self._prewarm_lock:
                     self._prewarming = False
 
-        threading.Thread(target=run, name="jarvis-prewarm", daemon=True).start()
+        threading.Thread(target=run, name="halcyon-prewarm", daemon=True).start()
 
     # ---------------------------------------------------------------- stream
 
@@ -343,7 +343,7 @@ def _to_ollama_tool(tool: Any) -> dict[str, Any]:  # noqa: ANN401
 def build_llm(profile: Profile, *, temperature: float = 0.4, base_url: str | None = None,
               tools: list[Any] | None = None, system: str | None = None) -> SpeechLLM:
     """
-    A SpeechLLM with the Jarvis persona plus a statement of what it can do.
+    A SpeechLLM with the Halcyon persona plus a statement of what it can do.
 
     The statement is generated from `tools`, so it always matches the tools
     actually enabled. Pass `system` to replace the whole prompt.
@@ -351,7 +351,7 @@ def build_llm(profile: Profile, *, temperature: float = 0.4, base_url: str | Non
     if system is None:
         from core.voice_tools import capability_statement
 
-        system = JARVIS_PERSONA + "\n" + capability_statement(tools or [])
+        system = HALCYON_PERSONA + "\n" + capability_statement(tools or [])
     return SpeechLLM(profile, temperature=temperature, base_url=base_url,
                      tools=tools, system=system)
 

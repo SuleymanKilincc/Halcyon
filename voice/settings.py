@@ -48,12 +48,12 @@ class VADSettings:
 
 @dataclass
 class BargeInSettings:
-    """Interrupting Jarvis mid-sentence."""
+    """Interrupting Halcyon mid-sentence."""
 
     enabled: bool = True
 
     # Barge-in uses a stricter threshold than normal listening, because while
-    # Jarvis is speaking the microphone also hears Jarvis. Without acoustic
+    # Halcyon is speaking the microphone also hears Halcyon. Without acoustic
     # echo cancellation this is what keeps the assistant from interrupting
     # itself through the laptop speakers.
     threshold: float = 0.85
@@ -72,10 +72,10 @@ class STTSettings:
 
     # distil-large-v3 is English-only. For Turkish + English use large-v3-turbo
     # (~1.6 GB VRAM in int8_float16) or small (~0.5 GB) on a tighter budget.
-    model: str = os.getenv("JARVIS_STT_MODEL", "large-v3-turbo")
+    model: str = os.getenv("HALCYON_STT_MODEL", "large-v3-turbo")
 
     # "cuda" | "cpu" | "auto"
-    device: str = os.getenv("JARVIS_STT_DEVICE", "auto")
+    device: str = os.getenv("HALCYON_STT_DEVICE", "auto")
 
     # int8_float16 on GPU is the accuracy/VRAM sweet spot for Ada cards.
     compute_type_cuda: str = "int8_float16"
@@ -84,7 +84,7 @@ class STTSettings:
     # None = autodetect per utterance. Autodetection costs ~50 ms and is
     # unreliable on very short utterances, so a fixed language is faster and
     # more accurate when you know you will only speak one.
-    language: str | None = os.getenv("JARVIS_STT_LANGUAGE") or None
+    language: str | None = os.getenv("HALCYON_STT_LANGUAGE") or None
 
     # Restrict autodetection to languages we actually have voices for.
     candidate_languages: tuple[str, ...] = ("tr", "en")
@@ -112,7 +112,7 @@ class STTSettings:
 
     # When Whisper detects a language outside candidate_languages, treat the
     # utterance as not understood and drop it, so the language model never
-    # acts on it and Jarvis stays silent - the pipeline's rule for anything it
+    # acts on it and Halcyon stays silent - the pipeline's rule for anything it
     # is not sure was speech. In the benchmark this only happened on very
     # noisy audio, every such clip was unintelligible, and decoding it again
     # in Turkish produced Turkish nonsense instead. When False, the original
@@ -127,7 +127,7 @@ class STTSettings:
     # Words to bias recognition towards (faster-whisper `hotwords`). Helped
     # Turkish clearly in far-field and noisy speech, including on sentences
     # that contain none of these words.
-    hotwords: str | None = "Python Jarvis masaüstü"
+    hotwords: str | None = "Python Halcyon masaüstü"
 
     # Utterances shorter than this are almost always noise that slipped past
     # the VAD. Transcribing them wastes a GPU round trip.

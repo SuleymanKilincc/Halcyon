@@ -1,5 +1,5 @@
 """
-Which tools Jarvis may use when the instruction arrives by voice.
+Which tools Halcyon may use when the instruction arrives by voice.
 
 The full set in ``tools.py`` includes writing files, deleting files and running
 shell commands. Those stay out of the voice path for now, and not because they
@@ -89,7 +89,7 @@ def capability_statement(tools: list[Any]) -> str:
 
 
 def get_voice_tools(include_gated: bool = False) -> list[Any]:
-    """Return the tool objects Jarvis may call from a spoken instruction."""
+    """Return the tool objects Halcyon may call from a spoken instruction."""
     from tools import get_all_tools
 
     allowed = set(VOICE_SAFE_TOOLS)

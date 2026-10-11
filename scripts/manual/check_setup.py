@@ -1,5 +1,5 @@
 """
-Setup verification script for Jarvis.
+Setup verification script for Halcyon.
 Run this to check if your environment is properly configured.
 """
 
@@ -90,7 +90,7 @@ def check_workspace():
 def main():
     """Run all checks."""
     print("=" * 60)
-    print("JARVIS SETUP VERIFICATION")
+    print("HALCYON SETUP VERIFICATION")
     print("=" * 60)
     
     checks = [
@@ -103,11 +103,11 @@ def main():
     print("\n" + "=" * 60)
     if all(checks):
         print("✓ ALL CHECKS PASSED!")
-        print("\nYou're ready to run Jarvis:")
+        print("\nYou're ready to run Halcyon:")
         print("  python agent.py")
     else:
         print("✗ SOME CHECKS FAILED")
-        print("\nPlease fix the issues above before running Jarvis.")
+        print("\nPlease fix the issues above before running Halcyon.")
     print("=" * 60)
 
 if __name__ == "__main__":

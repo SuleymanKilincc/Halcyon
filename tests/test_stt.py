@@ -103,7 +103,7 @@ def test_a_forced_language_skips_detection():
                                   "Jangan lupa like, share, dan subscribe"])
 def test_known_phantom_phrases_are_recognised(text):
     # Every one of these was produced from non-speech: in the benchmark, or
-    # (the Indonesian one) in a live session, where Jarvis then answered it.
+    # (the Indonesian one) in a live session, where Halcyon then answered it.
     assert is_phantom(text)
 
 

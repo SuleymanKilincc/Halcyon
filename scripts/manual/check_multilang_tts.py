@@ -132,7 +132,7 @@ def test_voice_switching(engine, turkish_voices, english_voices):
 def main():
     """Run all tests."""
     print("\n" + "="*60)
-    print("JARVIS MULTI-LANGUAGE TTS TEST")
+    print("HALCYON MULTI-LANGUAGE TTS TEST")
     print("="*60)
     print()
     

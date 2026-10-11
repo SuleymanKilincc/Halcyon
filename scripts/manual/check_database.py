@@ -33,10 +33,10 @@ def test_adding_messages(session_id):
     print_separator()
     
     # Add messages
-    db_manager.add_message(session_id, "system", "Jarvis initialized")
+    db_manager.add_message(session_id, "system", "Halcyon initialized")
     print("✅ Added system message")
     
-    db_manager.add_message(session_id, "user", "Hello Jarvis!")
+    db_manager.add_message(session_id, "user", "Hello Halcyon!")
     print("✅ Added user message")
     
     db_manager.add_message(session_id, "assistant", "Hello! How can I assist you today?")
@@ -165,7 +165,7 @@ def main():
     print("""
 ╔═══════════════════════════════════════════════════════════╗
 ║                                                           ║
-║           🧪 JARVIS DATABASE TEST SUITE                  ║
+║           🧪 HALCYON DATABASE TEST SUITE                  ║
 ║                                                           ║
 ╚═══════════════════════════════════════════════════════════╝
 """)

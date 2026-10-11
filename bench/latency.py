@@ -103,7 +103,7 @@ def main() -> int:
     args = parser.parse_args()
 
     print("=" * 72)
-    print("JARVIS VOICE LATENCY BENCHMARK")
+    print("HALCYON VOICE LATENCY BENCHMARK")
     print("=" * 72)
 
     hardware = detect()

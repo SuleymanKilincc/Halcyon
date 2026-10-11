@@ -1,9 +1,9 @@
 #!/bin/bash
-# Jarvis AI Agent Launcher for Linux/macOS
-# This script starts the Jarvis agent with proper checks
+# Halcyon AI Agent Launcher for Linux/macOS
+# This script starts the Halcyon agent with proper checks
 
 echo "========================================"
-echo "   JARVIS AI AGENT LAUNCHER"
+echo "   HALCYON AI AGENT LAUNCHER"
 echo "========================================"
 echo
 
@@ -45,7 +45,7 @@ if [ $? -ne 0 ]; then
     read -p "Press Enter to continue anyway..."
 fi
 
-# Launch Jarvis
-echo "Starting Jarvis..."
+# Launch Halcyon
+echo "Starting Halcyon..."
 echo
 python3 agent.py

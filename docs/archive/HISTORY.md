@@ -1,5 +1,7 @@
 # How the project got here
 
+The project was called Jarvis until it was renamed Halcyon in October 2026, so the documents in this folder use the old name.
+
 The project began as a text agent and became a real-time voice assistant. This page is the short version of that path: what each stage built, what it got wrong, and what changed because of it. The documents in this folder were written during the early stages and describe those stages, not the current system. For the current system, see the [README](../../README.md) and [docs/VOICE.md](../VOICE.md).
 
 ## Stage 1 — A local text agent

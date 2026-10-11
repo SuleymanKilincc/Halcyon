@@ -194,7 +194,7 @@ def test_archive_formats():
 def main():
     """Run all tests."""
     print("\n" + "="*60)
-    print("JARVIS ADVANCED TOOLS TEST SUITE")
+    print("HALCYON ADVANCED TOOLS TEST SUITE")
     print("="*60)
     print("\nThis will test the new advanced tools:")
     print("  - Web Automation (Playwright)")
@@ -243,7 +243,7 @@ def main():
     if all(results.values()):
         print("\n🎉 ALL TESTS PASSED!")
         print("\nAll advanced tools are ready to use.")
-        print("Launch Jarvis: python gui.py")
+        print("Launch Halcyon: python gui.py")
     else:
         print("\n⚠️ SOME TESTS FAILED")
         print("\nPlease install missing dependencies:")

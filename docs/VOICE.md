@@ -1,6 +1,6 @@
 # The voice pipeline
 
-A deep dive into how Jarvis listens, thinks and speaks, and the measurements behind each design decision. For an overview, start with the [README](../README.md).
+A deep dive into how Halcyon listens, thinks and speaks, and the measurements behind each design decision. For an overview, start with the [README](../README.md).
 
 All figures were measured on the development machine: AMD Ryzen 7 7735HS (8 cores / 16 threads), 32 GB RAM, NVIDIA RTX 4060 Laptop GPU with 8 GB VRAM, Windows 11.
 
@@ -56,7 +56,7 @@ The language model streams tokens; the sentence splitter releases a sentence the
 
 ### Barge-in
 
-The microphone stays open while Jarvis speaks. A separate, stricter detector (threshold 0.85, at least 280 ms of speech, ignored for the first 250 ms of playback) decides whether you are interrupting. It is stricter than normal listening because, without echo cancellation, the microphone also hears Jarvis through the speakers. **Use headphones**; with them the threshold can be lowered and interruption becomes much more responsive.
+The microphone stays open while Halcyon speaks. A separate, stricter detector (threshold 0.85, at least 280 ms of speech, ignored for the first 250 ms of playback) decides whether you are interrupting. It is stricter than normal listening because, without echo cancellation, the microphone also hears Halcyon through the speakers. **Use headphones**; with them the threshold can be lowered and interruption becomes much more responsive.
 
 ## Measurements
 
@@ -66,7 +66,7 @@ The microphone stays open while Jarvis speaks. A separate, stricter detector (th
 |---|---|
 | Speech-to-text (`large-v3-turbo`, CUDA) | 234–377 ms |
 | Language model, first token (`qwen3.5:9b`, warm) | 114–134 ms |
-| **First audio** (you stop speaking → you hear Jarvis) | **1105–1573 ms** |
+| **First audio** (you stop speaking → you hear Halcyon) | **1105–1573 ms** |
 
 ### Battery profile (CPU only)
 
@@ -106,7 +106,7 @@ The second pair matters for an assistant that writes code: the small model hears
 
 ### Language detection
 
-Detection runs per utterance and is restricted to the languages Jarvis has voices for (`candidate_languages = ("tr", "en")`), because on short audio Whisper sometimes guesses an unrelated language. Result: 4/4 correct, confidence 0.96–1.00. The reply voice switches with the detected language.
+Detection runs per utterance and is restricted to the languages Halcyon has voices for (`candidate_languages = ("tr", "en")`), because on short audio Whisper sometimes guesses an unrelated language. Result: 4/4 correct, confidence 0.96–1.00. The reply voice switches with the detected language.
 
 **Limitation:** mixing languages inside one sentence (Turkish with English technical terms, as developers often speak) is transcribed as a single language. Switching language between sentences works.
 
@@ -155,8 +155,8 @@ Battery profile — `base` on the CPU (8 threads):
 
 - **Second-stage VAD** (`vad_filter`). Before it, Whisper "transcribed" all five non-speech clips — *"Thank you."* on room noise, keyboard and hum, *"you"* on breathing, Portuguese *"E aí"* on near silence, and on one occasion the Russian *"Продолжение следует..."* ("to be continued") on keyboard clicks. These are subtitle phrases from Whisper's training data, produced on silence. With the VAD that ships inside faster-whisper removing non-speech before decoding: 0/5, in every run. Its effect on word error rate is mixed and small; the hallucination fix alone justifies it.
 - **Phantom filter.** A transcript that is *exactly* one of those phrases is dropped. No effect in this benchmark, because the VAD already removed them all; kept as a second line of defence because real rooms produce speech-like noise.
-- **Hotwords** (`Python Jarvis masaüstü`). The largest gains: far-field Turkish 26.5% → 21.8%, noisy Turkish 82.3% → 73.5%. Because two of the test sentences contain hotwords, a separate paired run also scored only the sentences that contain none of them, and the error rate still fell (41.0% → 36.6%) — the gain is not just from naming words that appear in the test. Cost: one more error on clean Turkish.
-- **Drop other languages.** When Whisper detects a language Jarvis cannot speak, the utterance is treated as not understood and dropped, so the language model never acts on it. An audit of every dropped clip: 0 of 20 clean, 0 of 60 far, 8 of 60 noisy — and all 8 were unintelligible (the best of them, kept, would have read *"Son bir gün doceri aç"* for *"Son indirdiğim dosyayı aç"*). The alternative that was tried first — decoding such audio again in Turkish — produced Turkish nonsense instead, sometimes a repetition loop, and made the error rate worse. (The comparison table shows a one-word change in the far column for this row, which the separate audit did not reproduce; the cause was not isolated.)
+- **Hotwords** (`Python Halcyon masaüstü`). The largest gains: far-field Turkish 26.5% → 21.8%, noisy Turkish 82.3% → 73.5%. Because two of the test sentences contain hotwords, a separate paired run also scored only the sentences that contain none of them, and the error rate still fell (41.0% → 36.6%) — the gain is not just from naming words that appear in the test. Cost: one more error on clean Turkish.
+- **Drop other languages.** When Whisper detects a language Halcyon cannot speak, the utterance is treated as not understood and dropped, so the language model never acts on it. An audit of every dropped clip: 0 of 20 clean, 0 of 60 far, 8 of 60 noisy — and all 8 were unintelligible (the best of them, kept, would have read *"Son bir gün doceri aç"* for *"Son indirdiğim dosyayı aç"*). The alternative that was tried first — decoding such audio again in Turkish — produced Turkish nonsense instead, sometimes a repetition loop, and made the error rate worse. (The comparison table shows a one-word change in the far column for this row, which the separate audit did not reproduce; the cause was not isolated.)
 - **Not adopted: beam search.** `beam_size=5` brought no consistent gain and added ~35 ms per utterance.
 
 On the battery profile the same settings improve Turkish markedly in far-field and noisy speech; noisy English is slightly worse (six more errors out of 207 words).
@@ -169,11 +169,11 @@ The test voice is one synthetic speaker per language, which is far easier than r
 
 ### What went wrong in a live session
 
-Asked *"Can you create your own?"* after it had just said it could not create folders, Jarvis replied *"I can try creating a folder… Let me attempt that now"*, ran an unrelated web search, and then said it could not. It had never been told which of its abilities were switched off, or why.
+Asked *"Can you create your own?"* after it had just said it could not create folders, Halcyon replied *"I can try creating a folder… Let me attempt that now"*, ran an unrelated web search, and then said it could not. It had never been told which of its abilities were switched off, or why.
 
 ### What changed
 
-- **A capability statement is generated into the system prompt from the enabled tools** (`capability_statement` in `core/voice_tools.py`): what Jarvis can do, what it cannot do yet, that the missing actions wait for a spoken confirmation step, and that a refusal should come with the closest thing it *can* do. Because it is generated, enabling a tool later updates what Jarvis says about itself automatically.
+- **A capability statement is generated into the system prompt from the enabled tools** (`capability_statement` in `core/voice_tools.py`): what Halcyon can do, what it cannot do yet, that the missing actions wait for a spoken confirmation step, and that a refusal should come with the closest thing it *can* do. Because it is generated, enabling a tool later updates what Halcyon says about itself automatically.
 - **Persona rules:** never announce, attempt or claim an action without the tool call that does it; answer from tool results only, and say so when a result does not contain the answer; no code formatting, which cannot be spoken.
 
 ### How it was measured
@@ -201,6 +201,19 @@ The replayed live case passed with **both** prompts: the contradiction could not
 ### The reply voice now follows the reply
 
 The voice that reads a sentence used to follow the language Whisper detected in the *user's* speech. An English *"Hi Jarvis, how are you?"* spoken with a Turkish accent was labelled Turkish, so the correct English reply was read by the Turkish voice. Each sentence is now voiced by its own language (`voice/language.py`: Turkish-specific letters and frequent function words on each side), with the user's language only as the fallback. Tested on 27 sentences, most of them verbatim from that session, including Turkish sentences without Turkish letters and Turkish sentences containing English technical terms.
+
+## Can the recogniser write the name?
+
+"Halcyon" is an unusual word, so a speech recogniser may turn it into something else. `python -m bench.name_check` synthesises six sentences that contain the name (four English, two Turkish), clean and with room noise, and counts how often the name comes out right:
+
+| Recogniser hint (`hotwords`) | Name written correctly |
+|---|---|
+| With the name in the hint (current setting) | 10 / 12 |
+| Without | 5 / 12 |
+
+Without the hint the name came out as "calcium", "Hal John", "Falcan" or "PayPal com". With it, the remaining two misses are the same sentence, clean and noisy: the recogniser dropped a leading *"Halcyon,"* entirely. Two runs gave the same totals; the exact wrong words varied.
+
+This is small (six sentences, one synthetic voice, so treat the totals as indicative) but it settles a design question: **a wake word cannot rely on finding the name in the recogniser's text.** Even with the hint it is missed about one time in six, and a wake word that the owner has to repeat is worse than none. The planned wake word will use a dedicated detector for the audio pattern, and the hint stays for the name inside normal requests.
 
 ## Choosing models for the GPU
 
@@ -230,7 +243,7 @@ Because that headroom is not documented and was not fully predictable, the plan 
 
 The language model is loaded and checked before Whisper, so a step down can still switch to a smaller speech model.
 
-The profile can be forced with `--profile` (`auto`, `battery`, or any configuration name such as `gpu-4b-8k`) or the `JARVIS_PROFILE` environment variable.
+The profile can be forced with `--profile` (`auto`, `battery`, or any configuration name such as `gpu-4b-8k`) or the `HALCYON_PROFILE` environment variable.
 
 ### GPU speech recognition needs PyTorch's CUDA libraries
 
@@ -238,7 +251,7 @@ faster-whisper (CTranslate2) does not ship cuBLAS or cuDNN; on Windows it finds 
 
 ### A switched-off GPU is not a missing GPU
 
-Laptops can power the discrete GPU off entirely (for example the "Eco" GPU mode in ASUS's G-Helper). Windows then reports it as *installed but not connected* (Device Manager error Code 45), and Python's usual hardware queries — PyTorch, WMI's `Win32_VideoController` — report no GPU at all. `core/hardware.py` additionally asks `Get-PnpDevice`, which distinguishes the two cases, so Jarvis can say *why* it is running on the CPU and how to fix it, rather than silently degrading.
+Laptops can power the discrete GPU off entirely (for example the "Eco" GPU mode in ASUS's G-Helper). Windows then reports it as *installed but not connected* (Device Manager error Code 45), and Python's usual hardware queries — PyTorch, WMI's `Win32_VideoController` — report no GPU at all. `core/hardware.py` additionally asks `Get-PnpDevice`, which distinguishes the two cases, so Halcyon can say *why* it is running on the CPU and how to fix it, rather than silently degrading.
 
 ## Design findings
 
@@ -305,7 +318,7 @@ This also explains an early benchmark that reported a near-identical ~3.7 s on e
 ## Not done yet
 
 - Saying "I didn't catch that" — speech that cannot be understood is currently dropped silently
-- Wake word ("Hey Jarvis")
+- Wake word ("Hey Halcyon")
 - Echo cancellation (headphones are required for now)
 - The desktop UI (`gui.py`) still uses the original pipeline
 - Speaker identification

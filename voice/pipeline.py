@@ -11,7 +11,7 @@ implementation:
 * **Streaming.** The handler yields text as it is generated; each completed
   sentence is synthesised and played while the rest is still being produced.
   Time to first audio stops depending on total answer length.
-* **Barge-in.** The microphone stays open while Jarvis speaks. Sustained
+* **Barge-in.** The microphone stays open while Halcyon speaks. Sustained
   speech cuts playback off mid-word and starts a new turn.
 """
 
@@ -261,8 +261,8 @@ class VoiceLoop:
         self._set_state(State.LISTENING)
         self.barge_in.reset()
         self.detector.reset()
-        # Anything the microphone captured while Jarvis was talking is either
-        # Jarvis itself or barge-in audio that has already been handled. Either
+        # Anything the microphone captured while Halcyon was talking is either
+        # Halcyon itself or barge-in audio that has already been handled. Either
         # way it must not be transcribed as the next user turn.
         mic.drain()
 

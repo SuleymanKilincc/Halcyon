@@ -1,5 +1,5 @@
 """
-Jarvis AI Agent - Main Orchestrator
+Halcyon AI Agent - Main Orchestrator
 Handles the LangGraph agent loop, memory management, and CLI interface.
 """
 
@@ -18,11 +18,11 @@ from database import db_manager
 # AGENT INITIALIZATION
 # ============================================================================
 
-class JarvisAgent:
-    """Main Jarvis AI Agent class."""
+class HalcyonAgent:
+    """Main Halcyon AI Agent class."""
     
     def __init__(self):
-        """Initialize the Jarvis agent with LLM, tools, and memory."""
+        """Initialize the Halcyon agent with LLM, tools, and memory."""
         self.llm = None
         self.agent = None
         self.chat_history = []
@@ -32,7 +32,7 @@ class JarvisAgent:
     def setup_agent(self):
         """Set up the LLM, tools, and agent executor."""
         try:
-            print(f"{config.COLORS['info']}Initializing Jarvis...{config.COLORS['reset']}")
+            print(f"{config.COLORS['info']}Initializing Halcyon...{config.COLORS['reset']}")
             
             # Initialize Ollama LLM
             print(f"  • Loading model: {config.OLLAMA_MODEL}")
@@ -57,10 +57,10 @@ class JarvisAgent:
                 prompt=config.SYSTEM_PROMPT
             )
             
-            print(f"{config.COLORS['info']}✓ Jarvis initialized successfully!{config.COLORS['reset']}\n")
+            print(f"{config.COLORS['info']}✓ Halcyon initialized successfully!{config.COLORS['reset']}\n")
             
         except Exception as e:
-            print(f"{config.COLORS['error']}❌ Error initializing Jarvis: {str(e)}{config.COLORS['reset']}")
+            print(f"{config.COLORS['error']}❌ Error initializing Halcyon: {str(e)}{config.COLORS['reset']}")
             print(f"\nPlease ensure:")
             print(f"  1. Ollama is running (check with: ollama list)")
             print(f"  2. Model is installed (run: ollama pull {config.OLLAMA_MODEL})")
@@ -143,9 +143,9 @@ class JarvisAgent:
 def print_banner():
     """Print welcome banner."""
     banner = f"""
-{config.COLORS['jarvis']}╔═══════════════════════════════════════════════════════════╗
+{config.COLORS['halcyon']}╔═══════════════════════════════════════════════════════════╗
 ║                                                           ║
-║              🤖  JARVIS AI AGENT SYSTEM  🤖              ║
+║              🤖  HALCYON AI AGENT SYSTEM  🤖              ║
 ║                                                           ║
 ║        Your Local AI Assistant powered by Ollama         ║
 ║                                                           ║
@@ -168,7 +168,7 @@ def print_help():
   /reset     - Clear conversation history
   /workspace - Show workspace directory path
   /tools     - List available tools
-  /exit      - Exit Jarvis
+  /exit      - Exit Halcyon
 
 {config.COLORS['info']}Example Requests:{config.COLORS['reset']}
   • "List files in the current directory"
@@ -179,13 +179,13 @@ def print_help():
 """
     print(help_text)
 
-def handle_command(command: str, agent: JarvisAgent) -> bool:
+def handle_command(command: str, agent: HalcyonAgent) -> bool:
     """
     Handle special commands.
     
     Args:
         command: Command string
-        agent: JarvisAgent instance
+        agent: HalcyonAgent instance
         
     Returns:
         True if should continue, False if should exit
@@ -193,7 +193,7 @@ def handle_command(command: str, agent: JarvisAgent) -> bool:
     command = command.strip().lower()
     
     if command == "/exit":
-        print(f"\n{config.COLORS['jarvis']}Goodbye! Stay awesome! 👋{config.COLORS['reset']}")
+        print(f"\n{config.COLORS['halcyon']}Goodbye! Stay awesome! 👋{config.COLORS['reset']}")
         return False
     
     elif command == "/help":
@@ -205,7 +205,7 @@ def handle_command(command: str, agent: JarvisAgent) -> bool:
     elif command == "/workspace":
         print(f"\n{config.COLORS['info']}Workspace Directory:{config.COLORS['reset']}")
         print(f"  {config.WORKSPACE_DIR}")
-        print(f"\n{config.COLORS['info']}This is where Jarvis will create and manage files.{config.COLORS['reset']}")
+        print(f"\n{config.COLORS['info']}This is where Halcyon will create and manage files.{config.COLORS['reset']}")
     
     elif command == "/tools":
         print(f"\n{config.COLORS['info']}Available Tools:{config.COLORS['reset']}")
@@ -230,7 +230,7 @@ def run_cli():
     print_banner()
     
     # Initialize agent
-    agent = JarvisAgent()
+    agent = HalcyonAgent()
     
     # Main loop
     print(f"{config.COLORS['info']}Ready! Type your request or /help for commands.{config.COLORS['reset']}\n")
@@ -252,17 +252,17 @@ def run_cli():
                 continue
             
             # Process with agent
-            print(f"\n{config.COLORS['jarvis']}{config.CLI_PROMPT_JARVIS}{config.COLORS['reset']}", end="", flush=True)
+            print(f"\n{config.COLORS['halcyon']}{config.CLI_PROMPT_HALCYON}{config.COLORS['reset']}", end="", flush=True)
             response = agent.chat(user_input)
             print(f"{response}\n")
             
         except KeyboardInterrupt:
             print(f"\n\n{config.COLORS['warning']}Interrupted by user{config.COLORS['reset']}")
-            print(f"{config.COLORS['jarvis']}Goodbye! 👋{config.COLORS['reset']}")
+            print(f"{config.COLORS['halcyon']}Goodbye! 👋{config.COLORS['reset']}")
             break
         
         except EOFError:
-            print(f"\n{config.COLORS['jarvis']}Goodbye! 👋{config.COLORS['reset']}")
+            print(f"\n{config.COLORS['halcyon']}Goodbye! 👋{config.COLORS['reset']}")
             break
         
         except Exception as e:

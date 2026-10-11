@@ -2,7 +2,7 @@
 Tests for the capability statement in the system prompt (core/voice_tools.py).
 
 The statement is generated from the enabled tools, so these tests check that
-what Jarvis is told about itself follows the tools - including the day a
+what Halcyon is told about itself follows the tools - including the day a
 currently disabled tool is switched on.
 """
 
@@ -39,7 +39,7 @@ def test_the_reason_and_the_expected_reply_are_stated():
 
 
 def test_enabling_a_tool_moves_it_from_cannot_to_can():
-    # The day writing files is switched on, Jarvis must stop saying it cannot.
+    # The day writing files is switched on, Halcyon must stop saying it cannot.
     text = statement([*VOICE_SAFE_TOOLS, "write_file"])
     can, cannot = text.split("What you cannot do")
     assert "create or overwrite files" in can

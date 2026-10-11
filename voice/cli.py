@@ -9,7 +9,7 @@ Live voice loop, on the terminal.
     python -m voice.cli --llm --input 1 --output 11
 
 Just talk. There is no button: the VAD decides when you started and stopped.
-You can interrupt Jarvis mid-sentence by talking over it.
+You can interrupt Halcyon mid-sentence by talking over it.
 
 The profile (which STT and LLM models get loaded) is chosen from the detected
 hardware unless --profile says otherwise. See core/profiles.py.
@@ -155,7 +155,7 @@ def main() -> int:
     def on_done(text: str) -> None:
         if llm is not None and llm.last_tool_calls:
             print(f"  \033[90mtools: {', '.join(llm.last_tool_calls)}\033[0m")
-        print(f"\033[96mJarvis\033[0m: {text.strip()}")
+        print(f"\033[96mHalcyon\033[0m: {text.strip()}")
 
     def on_barge_in() -> None:
         print("\r\033[93m-- interrupted --\033[0m")

@@ -1,5 +1,5 @@
 """
-GUI Setup Script for Jarvis
+GUI Setup Script for Halcyon
 Checks and installs GUI dependencies with helpful guidance
 """
 
@@ -133,7 +133,7 @@ def check_ollama():
 def main():
     """Main setup check."""
     print("="*60)
-    print("JARVIS GUI SETUP CHECKER")
+    print("HALCYON GUI SETUP CHECKER")
     print("="*60)
     print()
     
@@ -181,16 +181,16 @@ def main():
     print("\n" + "="*60)
     if all(checks):
         print("✓ ALL CHECKS PASSED!")
-        print("\nYou're ready to launch Jarvis GUI:")
+        print("\nYou're ready to launch Halcyon GUI:")
         print("  python gui.py")
         print("\nOr use the launcher:")
         if platform.system() == "Windows":
-            print("  start_jarvis_gui.bat")
+            print("  start_halcyon_gui.bat")
         else:
-            print("  ./start_jarvis_gui.sh")
+            print("  ./start_halcyon_gui.sh")
     else:
         print("⚠️ SOME CHECKS FAILED")
-        print("\nPlease fix the issues above before running Jarvis GUI.")
+        print("\nPlease fix the issues above before running Halcyon GUI.")
         print("\nCommon fixes:")
         print("  - Install dependencies: pip install -r requirements.txt")
         print("  - Install Ollama: https://ollama.ai/download")

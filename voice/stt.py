@@ -119,7 +119,7 @@ def resolve_model(configured: str, device: str) -> str:
     latency lands on every turn. When the user has not pinned a model
     explicitly, prefer a size the device can serve in well under a second.
     """
-    if os.getenv("JARVIS_STT_MODEL"):
+    if os.getenv("HALCYON_STT_MODEL"):
         return configured  # explicit choice wins, however slow
     if device == "cpu" and configured in _LARGE_MODELS:
         return _CPU_FALLBACK
@@ -142,14 +142,14 @@ class Transcriber:
 
         if self.model_name != self.settings.model:
             # State the cost of the fallback rather than just the fact of it:
-            # a quietly downgraded model is heard as "Jarvis mishears me",
+            # a quietly downgraded model is heard as "Halcyon mishears me",
             # which sends the user looking in entirely the wrong place.
             print(
                 f"[stt] No CUDA device available, so '{self.settings.model}' would add "
                 f"~1.5 s to every turn. Falling back to '{self.model_name}', which meets "
                 f"the latency budget but is noticeably less accurate, especially in Turkish."
             )
-            print("      Fix the GPU to get both. Set JARVIS_STT_MODEL to override.")
+            print("      Fix the GPU to get both. Set HALCYON_STT_MODEL to override.")
 
         started = time.perf_counter()
         options = dict(
@@ -207,7 +207,7 @@ class Transcriber:
         # that was unintelligible anyway, so it is treated as "not understood"
         # (see STTSettings.drop_other_languages). The label still becomes the
         # most probable candidate, so anything downstream stays in a language
-        # Jarvis can speak.
+        # Halcyon can speak.
         dropped = ""
         candidates = self.settings.candidate_languages
         if not forced and detected and detected not in candidates:

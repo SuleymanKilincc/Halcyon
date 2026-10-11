@@ -1,5 +1,5 @@
 """
-Database module for Jarvis AI Agent.
+Database module for Halcyon AI Agent.
 Manages chat sessions and conversation history using SQLAlchemy.
 """
 
@@ -21,7 +21,7 @@ import config
 Base = declarative_base()
 
 # Database file path
-DB_PATH = config.BASE_DIR / "jarvis_sessions.db"
+DB_PATH = config.BASE_DIR / "halcyon_sessions.db"
 DATABASE_URL = f"sqlite:///{DB_PATH}"
 
 # ============================================================================

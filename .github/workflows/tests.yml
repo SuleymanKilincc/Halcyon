@@ -2,7 +2,7 @@
 #
 # The tests need no microphone, GPU or Ollama server: hardware and the model
 # server are replaced by fakes, so a plain cloud runner is enough. Two
-# operating systems, because Jarvis is developed on Windows but its logic
+# operating systems, because Halcyon is developed on Windows but its logic
 # should not depend on it.
 name: tests
 

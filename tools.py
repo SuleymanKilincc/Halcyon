@@ -1,5 +1,5 @@
 """
-Custom tools for Jarvis AI Agent.
+Custom tools for Halcyon AI Agent.
 Implements terminal access, file system operations, web capabilities,
 web automation, file downloading, and archive extraction.
 """

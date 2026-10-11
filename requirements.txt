@@ -1,4 +1,4 @@
-# Jarvis - Python dependencies
+# Halcyon - Python dependencies
 #
 # The lower bounds are the versions installed and tested on the development
 # machine. An earlier version of this file pinned LangChain 0.3 / LangGraph 0.2

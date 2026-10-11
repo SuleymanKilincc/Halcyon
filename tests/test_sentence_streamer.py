@@ -2,7 +2,7 @@
 Tests for the sentence splitter and the speech text cleaner (voice/tts.py).
 
 The splitter decides when the first sentence of an answer is handed to the
-speech synthesiser, so it directly sets how soon Jarvis starts talking. A bug
+speech synthesiser, so it directly sets how soon Halcyon starts talking. A bug
 here does not crash anything - it just makes the assistant silently slower or
 makes it read fragments, which is exactly the kind of regression only a test
 catches.
@@ -58,7 +58,7 @@ def test_question_and_exclamation_marks_end_sentences():
 
 
 def test_turkish_text_is_split_with_its_characters_intact():
-    # Jarvis speaks Turkish, so the splitter must handle Turkish letters and
+    # Halcyon speaks Turkish, so the splitter must handle Turkish letters and
     # punctuation. The input is Turkish on purpose: it is the data under test.
     s = SentenceStreamer(min_chars=5)
     assert feed(s, ["Hazır mısın? Başlıyoruz! ", "x"]) == ["Hazır mısın?", "Başlıyoruz!"]

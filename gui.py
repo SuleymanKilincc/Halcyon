@@ -1,5 +1,5 @@
 """
-Jarvis AI Agent - Futuristic GUI Interface
+Halcyon AI Agent - Futuristic GUI Interface
 Iron Man / Stark Industries inspired desktop interface with voice capabilities
 """
 
@@ -14,7 +14,7 @@ import speech_recognition as sr
 import pyttsx3
 from langdetect import detect, LangDetectException
 
-from agent import JarvisAgent
+from agent import HalcyonAgent
 import config
 from database import db_manager
 
@@ -322,8 +322,8 @@ class ApprovalDialog(ctk.CTkToplevel):
 # MAIN GUI APPLICATION
 # ============================================================================
 
-class JarvisGUI:
-    """Main GUI application for Jarvis AI Agent."""
+class HalcyonGUI:
+    """Main GUI application for Halcyon AI Agent."""
     
     def __init__(self):
         # Initialize agent
@@ -748,10 +748,10 @@ class JarvisGUI:
             self.tts_engine = None
     
     def _initialize_agent(self):
-        """Initialize Jarvis agent in background."""
+        """Initialize Halcyon agent in background."""
         def init():
             try:
-                self.agent = JarvisAgent()
+                self.agent = HalcyonAgent()
                 self.agent_ready = True
                 self.root.after(0, self._on_agent_ready)
             except Exception as e:
@@ -833,7 +833,7 @@ class JarvisGUI:
             text_color=COLORS['success']
         )
         self._add_system_message("J.A.R.V.I.S is online and ready for commands, sir.")
-        self._speak("Jarvis online. All systems operational.")
+        self._speak("Halcyon online. All systems operational.")
     
     def _on_agent_error(self, error: str):
         """Called when agent initialization fails."""
@@ -865,11 +865,11 @@ class JarvisGUI:
         # Save to database
         self._save_message_to_session("user", message)
     
-    def _add_jarvis_message(self, message: str):
-        """Add Jarvis message to chat."""
+    def _add_halcyon_message(self, message: str):
+        """Add Halcyon message to chat."""
         self.chat_display.configure(state="normal")
-        self.chat_display.insert("end", f"\n[JARVIS] {message}\n", "jarvis")
-        self.chat_display.tag_config("jarvis", foreground=COLORS['success'])
+        self.chat_display.insert("end", f"\n[HALCYON] {message}\n", "halcyon")
+        self.chat_display.tag_config("halcyon", foreground=COLORS['success'])
         self.chat_display.see("end")
         self.chat_display.configure(state="disabled")
         # Save to database
@@ -1046,7 +1046,7 @@ class JarvisGUI:
     def _on_response_received(self, response: str):
         """Called when response is received."""
         self.waveform.stop_animation()
-        self._add_jarvis_message(response)
+        self._add_halcyon_message(response)
         self._speak(response)
     
     def _on_response_error(self, error: str):
@@ -1070,7 +1070,7 @@ class JarvisGUI:
         """
         try:
             # Remove common system messages and formatting
-            clean_text = text.replace('[SYSTEM]', '').replace('[JARVIS]', '').replace('[YOU]', '')
+            clean_text = text.replace('[SYSTEM]', '').replace('[HALCYON]', '').replace('[YOU]', '')
             clean_text = clean_text.replace('✓', '').replace('⚠️', '').replace('❌', '')
             clean_text = clean_text.strip()
             
@@ -1387,13 +1387,13 @@ class JarvisGUI:
                     if msg.role == "user":
                         self.chat_display.insert("end", f"\n[YOU] {msg.content}\n", "user")
                     elif msg.role == "assistant":
-                        self.chat_display.insert("end", f"\n[JARVIS] {msg.content}\n", "jarvis")
+                        self.chat_display.insert("end", f"\n[HALCYON] {msg.content}\n", "halcyon")
                     elif msg.role == "system":
                         self.chat_display.insert("end", f"\n[SYSTEM] {msg.content}\n", "system")
                 
                 # Configure tags and scroll
                 self.chat_display.tag_config("user", foreground=COLORS['accent_cyan'])
-                self.chat_display.tag_config("jarvis", foreground=COLORS['success'])
+                self.chat_display.tag_config("halcyon", foreground=COLORS['success'])
                 self.chat_display.tag_config("system", foreground=COLORS['text_secondary'])
                 self.chat_display.see("end")
                 self.chat_display.configure(state="disabled")
@@ -1490,7 +1490,7 @@ class JarvisGUI:
 def main():
     """Main entry point."""
     try:
-        app = JarvisGUI()
+        app = HalcyonGUI()
         app.run()
     except Exception as e:
         print(f"Fatal error: {e}")

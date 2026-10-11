@@ -6,7 +6,7 @@ switched on. Rather than degrading whichever component happens to notice
 first, the whole stack picks a coherent set of models up front:
 
 * **battery**     — iGPU / CPU only. Smaller models everywhere. The goal is
-                    that Jarvis stays *usable* on battery, not that it stays
+                    that Halcyon stays *usable* on battery, not that it stays
                     identical.
 * **gpu-<model>-<context>** — a discrete GPU is available. Which models and
                     context length depends on the free VRAM; see core/vram.py.
@@ -117,13 +117,13 @@ def resolve(hardware: Hardware | None = None, override: str | None = None,
     """
     Pick the profile this machine should run.
 
-    ``override`` (or the ``JARVIS_PROFILE`` environment variable) wins over
+    ``override`` (or the ``HALCYON_PROFILE`` environment variable) wins over
     detection. ``installed`` is the set of models already pulled into Ollama;
     when given, the GPU plan only uses those, and suggests a better model if
     the card could run one.
     """
     hardware = hardware or detect()
-    override = override or os.getenv("JARVIS_PROFILE")
+    override = override or os.getenv("HALCYON_PROFILE")
 
     if override and override.strip().lower() != "auto":
         key = override.strip().lower()
@@ -131,7 +131,7 @@ def resolve(hardware: Hardware | None = None, override: str | None = None,
             raise ValueError(
                 f"Unknown profile {override!r}. Choices: auto, {', '.join(PROFILES)}"
             )
-        return replace(PROFILES[key], reason="chosen manually (JARVIS_PROFILE / --profile)")
+        return replace(PROFILES[key], reason="chosen manually (HALCYON_PROFILE / --profile)")
 
     if not hardware.cuda:
         if hardware.dgpu_disconnected:

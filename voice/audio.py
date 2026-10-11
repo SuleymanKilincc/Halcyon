@@ -29,7 +29,7 @@ class MicStream:
     Continuous microphone capture as an iterator of int16 numpy frames.
 
     Frames are exactly ``VAD_FRAME_SAMPLES`` long because Silero VAD rejects
-    any other size at 16 kHz. Capture keeps running while Jarvis is speaking —
+    any other size at 16 kHz. Capture keeps running while Halcyon is speaking —
     that is what makes barge-in possible — so the consumer, not this class,
     decides which frames matter.
     """
@@ -80,7 +80,7 @@ class MicStream:
         """
         Discard everything currently buffered.
 
-        Called after Jarvis finishes speaking, so the echo of its own voice
+        Called after Halcyon finishes speaking, so the echo of its own voice
         that the microphone picked up is not then transcribed as user input.
         """
         while True:
@@ -125,7 +125,7 @@ class Player:
             dtype="int16",
         )
         self._stream.start()
-        self._thread = threading.Thread(target=self._run, name="jarvis-player", daemon=True)
+        self._thread = threading.Thread(target=self._run, name="halcyon-player", daemon=True)
         self._thread.start()
 
     def _run(self) -> None:

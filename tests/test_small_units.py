@@ -33,7 +33,7 @@ def test_malformed_voice_id_is_rejected():
 
 @pytest.fixture(autouse=True)
 def no_stt_override(monkeypatch):
-    monkeypatch.delenv("JARVIS_STT_MODEL", raising=False)
+    monkeypatch.delenv("HALCYON_STT_MODEL", raising=False)
 
 
 def test_explicit_device_is_used_as_is():
@@ -55,7 +55,7 @@ def test_small_model_is_kept_on_cpu():
 
 
 def test_user_choice_overrides_the_fallback(monkeypatch):
-    monkeypatch.setenv("JARVIS_STT_MODEL", "large-v3-turbo")
+    monkeypatch.setenv("HALCYON_STT_MODEL", "large-v3-turbo")
     assert resolve_model("large-v3-turbo", "cpu") == "large-v3-turbo"
 
 

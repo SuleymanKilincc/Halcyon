@@ -79,15 +79,15 @@ def test_history_is_sent_with_the_next_question():
 
 def test_tool_is_called_and_its_result_reaches_the_model():
     llm = make_llm(
-        [[tool_call("shout", word="jarvis")], [text("Result: JARVIS.")]],
+        [[tool_call("shout", word="halcyon")], [text("Result: HALCYON.")]],
         tools=[shout],
     )
     answer = "".join(llm.stream("shout it"))
-    assert answer == "Result: JARVIS."
+    assert answer == "Result: HALCYON."
     assert llm.last_tool_calls == ["shout"]
     second_request = llm._client.requests[1]["messages"]
     tool_messages = [m for m in second_request if m["role"] == "tool"]
-    assert tool_messages[0]["content"] == "JARVIS"
+    assert tool_messages[0]["content"] == "HALCYON"
 
 
 def test_text_before_and_after_a_tool_call_is_joined_with_a_space():

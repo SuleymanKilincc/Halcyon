@@ -16,7 +16,7 @@ try:
     import config
 except ImportError as e:
     print(f"Error importing modules: {e}")
-    print("Make sure you're running from the Jarvis directory")
+    print("Make sure you're running from the Halcyon directory")
     sys.exit(1)
 
 def test_approval_dialog_visual():
@@ -288,7 +288,7 @@ def test_keyboard_shortcuts():
 def main():
     """Run all tests."""
     print("\n" + "="*60)
-    print("JARVIS GUI APPROVAL SYSTEM TEST SUITE")
+    print("HALCYON GUI APPROVAL SYSTEM TEST SUITE")
     print("="*60)
     print("\nThis will test the GUI-based approval system.")
     print("\nTests:")

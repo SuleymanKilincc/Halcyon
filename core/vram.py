@@ -1,7 +1,7 @@
 """
 VRAM planning: pick the best models that fit the GPU actually present.
 
-Jarvis loads two models onto the same card - Whisper for speech recognition and
+Halcyon loads two models onto the same card - Whisper for speech recognition and
 an LLM through Ollama - and the right pair depends entirely on how much memory
 is free. A fixed rule cannot serve a 4 GB RTX 3050 and a 32 GB RTX 5090 at the
 same time: the first overflows (layers spill to the CPU and every token slows
