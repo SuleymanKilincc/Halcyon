@@ -17,6 +17,8 @@ confirmation is spoken and has to be answered out loud.
 
 from __future__ import annotations
 
+import platform
+from pathlib import Path
 from typing import Any
 
 # Read-only or otherwise non-destructive. A bad call here wastes a turn; it
@@ -84,8 +86,41 @@ def capability_statement(tools: list[Any]) -> str:
     if cannot:
         lines.append("What you cannot do yet: " + "; ".join(cannot) + ". These are switched off "
                      "until a spoken confirmation step exists. When asked for one, say in one "
-                     "sentence that you cannot do it yet, and offer the closest thing you can do.")
+                     "sentence that you cannot do it yet, and offer the closest thing you can do. Never ask the user to confirm: it cannot be done at all yet.")
     return "\n".join(lines)
+
+
+def environment_statement(home: Path | None = None) -> str:
+    """
+    Where things are on this computer, as a few lines for the system prompt.
+
+    A spoken "what is on my desktop?" has to become a real path. The file tools
+    take absolute paths (a relative one means the assistant's own workspace
+    folder), and the model cannot know the user's name or whether the desktop
+    has been redirected to a cloud folder, so it guessed and reported that a
+    folder sitting on the desktop did not exist.
+    """
+    home = home or Path.home()
+    found = []
+    for label, candidates in (
+        ("Desktop", (home / "Desktop", home / "OneDrive" / "Desktop")),
+        ("Documents", (home / "Documents", home / "OneDrive" / "Documents")),
+        ("Downloads", (home / "Downloads",)),
+    ):
+        folder = next((c for c in candidates if c.is_dir()), None)
+        if folder is not None:
+            found.append(f"{label} = {folder.as_posix()}")
+    known = ("; ".join(found) + ".") if found else "none found."
+    return (
+        f"Environment: {platform.system()}. The user's home folder is {home.as_posix()}. "
+        f"Known folders: {known} "
+        "The file tools need full paths: a relative path means the assistant's own workspace "
+        "folder, not the user's files. For 'my desktop' use the Desktop path; a folder the user "
+        "names on the desktop is inside it. If you are unsure where something is, list the "
+        "parent folder first instead of guessing. Paths are for the tools only: when you "
+        "answer, say folders in words ('your desktop', 'the Projects folder'), never read "
+        "out a full path or put one in backticks."
+    )
 
 
 def get_voice_tools(include_gated: bool = False) -> list[Any]:

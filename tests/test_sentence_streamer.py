@@ -85,8 +85,71 @@ def test_spoken_placeholders_follow_the_reply_language():
 
 
 def test_clean_for_speech_keeps_inline_code_text_without_backticks():
-    assert clean_for_speech("open `config.py` now") == "open config.py now"
+    assert clean_for_speech("run `build now` first") == "run build now first"
+    # A file name inside backticks is then spoken like any other file name.
+    assert clean_for_speech("open `config.py` now") == "open config now"
 
 
 def test_clean_for_speech_collapses_whitespace():
     assert clean_for_speech("  one   two \n three  ") == "one two three"
+
+
+# ------------------------------------------------ file names are spoken as words
+
+def test_names_with_underscores_are_spoken_as_separate_words():
+    # "meeting_notes" was cleaned to "meetingnotes": one unpronounceable word.
+    assert clean_for_speech("Read meeting_notes please") == "Read meeting notes please"
+
+
+def test_the_extension_is_not_spelled_out():
+    # "hello dot p y" was measured 20-30% faster than ordinary speech and mumbled.
+    assert clean_for_speech("It is hello.py") == "It is hello"
+    assert clean_for_speech("Open notes.txt now") == "Open notes now"
+
+
+def test_a_snake_case_file_name_is_spoken_as_words():
+    text = "The files are alisveris_listesi.txt, hello.py, and meeting_notes.txt."
+    assert clean_for_speech(text) == "The files are alisveris listesi, hello, and meeting notes."
+
+
+def test_a_file_name_in_a_turkish_reply_is_spoken_the_same_way():
+    assert clean_for_speech("Dosya notlar.txt", "tr") == "Dosya notlar"
+
+
+def test_numbers_with_a_decimal_point_and_ordinary_sentences_are_untouched():
+    assert clean_for_speech("It needs 3.5 GB. Then it stops.") == "It needs 3.5 GB. Then it stops."
+    assert clean_for_speech("Version 3.13 is out.") == "Version 3.13 is out."
+
+
+# ------------------------------------------------ closing offers are not read aloud
+
+import pytest  # noqa: E402
+
+from voice.tts import is_closing_offer  # noqa: E402
+
+
+@pytest.mark.parametrize("sentence", [
+    "Would you like me to read any of them?",
+    "Do you want me to explain how it works?",
+    "Is there anything specific you'd like me to do next?",
+    "Let me know if you need anything else.",
+    "Shall I open it?",
+    "Başka bir şey okumamı ister misin?",
+    "İsterseniz dosyayı da okuyabilirim.",     # capital İ lowercases with a combining dot
+    "İster misin okuyayım?",
+])
+def test_closing_offers_are_recognised(sentence):
+    assert is_closing_offer(sentence)
+
+
+@pytest.mark.parametrize("sentence", [
+    "The demo folder contains three files.",
+    "I can list the contents of your Projects folder instead.",
+    "I cannot delete files yet.",
+    "Which folder do you mean?",
+    "Shallow water is cold.",
+    "Istanbul is big.",
+    "Dosyada üç satır var.",
+])
+def test_real_answers_and_questions_are_not_mistaken_for_offers(sentence):
+    assert not is_closing_offer(sentence)

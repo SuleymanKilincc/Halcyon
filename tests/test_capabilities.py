@@ -56,3 +56,31 @@ def test_every_tool_has_a_description():
 
 def test_no_tools_at_all():
     assert "You have no tools" in statement([])
+
+
+# ------------------------------------------------ where things are on this computer
+
+def test_the_environment_statement_gives_the_real_folders(tmp_path):
+    from core.voice_tools import environment_statement
+
+    (tmp_path / "Desktop").mkdir()
+    (tmp_path / "Documents").mkdir()
+    text = environment_statement(tmp_path)
+    assert f"Desktop = {(tmp_path / 'Desktop').as_posix()}" in text
+    assert f"Documents = {(tmp_path / 'Documents').as_posix()}" in text
+    assert "Downloads" not in text            # absent folders are not invented
+    assert "full paths" in text
+    assert "never read out a full path" in text   # paths cannot be spoken
+
+
+def test_a_desktop_redirected_to_a_cloud_folder_is_found(tmp_path):
+    from core.voice_tools import environment_statement
+
+    (tmp_path / "OneDrive" / "Desktop").mkdir(parents=True)
+    assert (tmp_path / "OneDrive" / "Desktop").as_posix() in environment_statement(tmp_path)
+
+
+def test_with_no_known_folders_the_statement_still_works(tmp_path):
+    from core.voice_tools import environment_statement
+
+    assert "none found" in environment_statement(tmp_path)

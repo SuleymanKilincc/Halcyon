@@ -136,3 +136,27 @@ def test_tool_description_sent_to_the_model_is_only_the_first_paragraph():
     spec = _to_ollama_tool(shout)
     assert spec["function"]["name"] == "shout"
     assert spec["function"]["description"] == "Return the word in capitals."
+
+
+# ------------------------------------------------ the language of this turn
+
+def test_the_model_is_told_which_language_this_turn_is_in():
+    llm = make_llm([[text("Tamam.")]])
+    "".join(llm.stream("Merhaba", language="tr"))
+    system = llm._client.requests[0]["messages"][0]["content"]
+    assert system.endswith("reply in Turkish.")
+
+
+def test_without_a_language_the_system_prompt_is_unchanged():
+    llm = make_llm([[text("ok")]])
+    "".join(llm.stream("hello"))
+    assert llm._client.requests[0]["messages"][0]["content"] == llm.system
+
+
+def test_the_language_note_is_not_kept_in_the_history():
+    llm = make_llm([[text("Tamam.")], [text("Okay.")]])
+    "".join(llm.stream("Merhaba", language="tr"))
+    "".join(llm.stream("Thanks", language="en"))
+    second = llm._client.requests[1]["messages"]
+    assert second[0]["content"].endswith("reply in English.")
+    assert not any("Turkish" in str(m.get("content", "")) for m in second[1:])

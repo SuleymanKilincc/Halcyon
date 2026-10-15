@@ -4,6 +4,7 @@ Live voice loop, on the terminal.
     python -m voice.cli                       # echo mode: no LLM, audio path only
     python -m voice.cli --llm                 # talk to the model for this profile
     python -m voice.cli --llm --profile battery
+    python -m voice.cli --text                # type instead of speaking: no microphone, nothing played
     python -m voice.cli --devices             # list audio devices and exit
     python -m voice.cli --info                # show detected hardware + profile
     python -m voice.cli --llm --input 1 --output 11
@@ -23,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 from collections.abc import Iterator
 
 from core.hardware import detect
@@ -30,6 +32,7 @@ from core.fit import fit_to_gpu
 from core.llm import build_llm, check_model_available, installed_models, stream_reply
 from core.profiles import PROFILES, apply_to_voice_settings, resolve
 from core.voice_tools import describe_voice_tools, get_voice_tools
+from voice.language import guess_language
 from voice.pipeline import State, TurnTimings, VoiceEvents, VoiceLoop
 from voice.settings import DEFAULT
 from voice.stt import Transcript
@@ -64,9 +67,57 @@ def make_llm_handler(profile, tools):  # noqa: ANN001
     llm.warmup()
 
     def handler(transcript: Transcript) -> Iterator[str]:
-        yield from stream_reply(llm, transcript.text, language=transcript.language)
+        # The language of the words, not Whisper's guess about the audio: an
+        # accented English sentence was once labelled Turkish.
+        language = guess_language(transcript.text, fallback=transcript.language)
+        yield from stream_reply(llm, transcript.text, language=language)
 
     return llm, handler
+
+
+def run_typed(handler, llm, read_line=input, write=print, clock=time.perf_counter) -> int:
+    """
+    Type instead of speaking: no microphone, no speech models, nothing played.
+
+    The same language model, tools and persona as the voice loop. Useful where
+    talking is not possible (a library, a recording without sound) and for
+    trying the assistant's behaviour quickly. The reply is printed as it is
+    generated, the way the spoken one would be.
+    """
+    write("Type a request and press Enter (an empty line is skipped; 'exit' or Ctrl+C quits).\n")
+    while True:
+        try:
+            line = read_line("\033[92mYou\033[0m: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            write()
+            return 0
+        if line.lower() in ("exit", "quit"):
+            return 0
+        if not line:
+            continue
+        transcript = Transcript(text=line, language=guess_language(line), language_probability=1.0,
+                                duration_ms=0, latency_ms=0)
+        started, first_at, prefix = clock(), None, "\033[96mHalcyon\033[0m: "
+        try:
+            # The handler yields raw text deltas, not sentences: print them as they
+            # arrive and unchanged (joining them with spaces splits words apart).
+            for delta in handler(transcript):
+                if first_at is None:
+                    if not delta.strip():
+                        continue
+                    first_at = clock()
+                    delta = delta.lstrip()
+                    write(prefix, end="", flush=True)
+                write(delta, end="", flush=True)
+        except Exception as exc:  # noqa: BLE001 - keep the session alive, show the cause
+            write(f"\n\033[91mError:\033[0m {exc}")
+            continue
+        if first_at is None:
+            write("\033[96mHalcyon\033[0m: (no reply)")
+            continue
+        write()
+        tools = ", ".join(llm.last_tool_calls) if llm is not None and llm.last_tool_calls else "none"
+        write(f"  \033[90mtools: {tools} | first text {first_at - started:.1f} s\033[0m")
 
 
 def main() -> int:
@@ -74,6 +125,8 @@ def main() -> int:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument("--llm", action="store_true", help="use the profile's model")
+    parser.add_argument("--text", action="store_true",
+                        help="type instead of speaking (implies --llm; no microphone, nothing played)")
     parser.add_argument("--profile", default=None, choices=sorted(PROFILES),
                         help="override hardware detection")
     parser.add_argument("--model", default=None, help="override just the LLM model name")
@@ -86,6 +139,10 @@ def main() -> int:
     parser.add_argument("--unsafe-tools", action="store_true",
                         help="also expose the mutating tools (no approval layer yet)")
     args = parser.parse_args()
+    if args.text:
+        args.llm = True
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
     if args.devices:
         from voice.audio import list_devices
@@ -136,6 +193,9 @@ def main() -> int:
         settings = apply_to_voice_settings(profile, settings, hardware)
     else:
         handler = make_echo_handler()
+
+    if args.text:
+        return run_typed(handler, llm)
 
     def on_speech_start() -> None:
         # The GPU drops into a low-power state when idle and costs ~2 s to

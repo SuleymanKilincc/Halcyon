@@ -29,7 +29,7 @@ import numpy as np
 from voice.language import guess_language
 from voice.settings import DEFAULT, VoiceSettings
 from voice.stt import Transcriber, Transcript
-from voice.tts import SentenceStreamer, Synthesizer
+from voice.tts import SentenceStreamer, Synthesizer, is_closing_offer
 from voice.vad import BargeInDetector, SpeechDetector, VADEvent
 
 if TYPE_CHECKING:
@@ -238,10 +238,14 @@ class VoiceLoop:
                 for sentence in streamer.push(delta):
                     if self._interrupted.is_set():
                         break
+                    if spoken_any and is_closing_offer(sentence):
+                        continue  # the answer is out; do not read an offer after it
                     spoken_any = self._speak(sentence, language, timings) or spoken_any
 
             if not self._interrupted.is_set():
                 for sentence in streamer.flush():
+                    if spoken_any and is_closing_offer(sentence):
+                        continue
                     spoken_any = self._speak(sentence, language, timings) or spoken_any
         except Exception as exc:  # noqa: BLE001
             self.events.emit("on_error", exc)

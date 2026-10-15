@@ -21,6 +21,7 @@ python -m voice.cli --info          # detected hardware and chosen profile
 python -m voice.cli                 # echo mode: repeats what it heard, no LLM
 python -m voice.cli --llm           # full assistant
 python -m voice.cli --llm --profile battery
+python -m voice.cli --text                # type instead of speaking (no microphone, nothing played)
 python -m voice.cli --devices       # list audio devices; then --input N --output M
 ```
 
@@ -180,16 +181,18 @@ Asked *"Can you create your own?"* after it had just said it could not create fo
 
 `python -m bench.capability_eval --compare` sends 15 typed requests in Turkish and English to the real model with the real tool definitions, but with fake tools — nothing on disk is touched and nothing goes to the network. Each request has a known correct behaviour: call the right tool; decline a disabled action plainly; describe its abilities without inventing any; reply in the language of the request; quote no number the tools did not return; use no code formatting. One case replays the six turns that preceded the contradiction above, verbatim from the session transcript.
 
-The model is seeded; running the same list twice gives identical replies. Changing the list (and with it the order of requests) can shift wording slightly, because Ollama reuses cached context between requests — so conclusions rest only on differences that held across runs.
+The model is seeded, but that does not make runs identical. On 2026-10-11 two back-to-back runs gave identical replies. On 2026-10-14 two consecutive runs of the same list agreed on only 5 of 15 replies and scored 14/15 and 13/15: the wording drifted, and in one run the search reply named a Python version (3.13, "October 7th") that the fake search result did not contain. The cause was not isolated; the model was 100% on the GPU both times. So a difference of one point between runs is noise, and only larger differences should be read as a result.
 
 | System prompt | Correct tool | Declined plainly | Abilities described honestly | Total |
 |---|---|---|---|---|
 | Before | 5/6 | 4/7 | 2/2 | 11/15 |
 | **After** | **6/6** | **6/7** | **2/2** | **14/15** |
 
+Read the table with the caveat above. The prompt that gave 14/15 was measured once against the earlier prompt's 11/15. After the prompt also gained a statement of where the user's folders are (so that "my desktop" resolves to a real path), four runs gave 14, 13, 14 and 13 out of 15. The before/after comparison should be repeated, several runs each, before it is leaned on.
+
 What the numbers summarise:
 
-- **Invented facts stopped.** Before, a web search that returned only *"python.org — Python release notes"* was answered with a specific version number and release date from the model's memory, presented as the search result. After: *"The latest Python release is available on the official Python website. Would you like me to fetch the release notes from there?"*
+- **Invented facts became rarer, not zero.** Before, a web search that returned only *"python.org — Python release notes"* was answered with a specific version number and release date from the model's memory, presented as the search result. After: *"The latest Python release is available on the official Python website. Would you like me to fetch the release notes from there?"*
 - **A false claim stopped.** Before, asked in Turkish to create a folder, it replied that it was scanning the file system *and creating the folder* — which it cannot do.
 - **Refusals now come with an alternative**, e.g. *"I cannot create folders or directories yet as that feature is currently disabled. I can list what is inside your Projects folder if you'd like."*
 - **No more `code` in spoken replies.**
@@ -197,6 +200,18 @@ What the numbers summarise:
 The one remaining failure is the checker's, not the model's: a Turkish refusal phrased with a bare *"değil"* is not in the heuristic's list of negations. It was left as is rather than adjusting the checker after seeing the result. That reply's Turkish is also clumsy — the 9B model's Turkish is serviceable but less polished than its English.
 
 The replayed live case passed with **both** prompts: the contradiction could not be reproduced with the seed fixed, so it was most likely an unlucky sample at the voice assistant's temperature of 0.4. The new prompt removes the ambiguity that made such a reply possible; it cannot be shown to have fixed that single occurrence.
+
+### What the first live demo taught
+
+Preparing a demo with real speech exposed problems that no benchmark had:
+
+- **File names were mumbled.** The speech cleaner deleted underscores, so *meeting_notes.txt* was synthesised as the single word "meetingnotes". Spelling extensions out ("hello dot p y") was then measured at 26–29 characters per second against 22 for ordinary sentences, varying by up to a third between runs: letters said too fast to follow. Underscores now become spaces and extensions are not spoken at all; the screen shows the full name.
+- **The language of the turn.** After a few English turns a Turkish question was answered in English. Each turn now tells the model which language it is in, taken from the words themselves (Whisper's label of the audio had been wrong before), without touching the stored history.
+- **Closing offers are not read aloud.** A small model ends most answers with *"Would you like me to ...?"*. Said aloud it sounds scripted, and it is dead time. A sentence of that kind is skipped when the reply has already said something (`is_closing_offer`, English and Turkish); the first sentence is never skipped.
+- **Where is "my desktop"?** The file tools take absolute paths, and the model had to guess the user's name and folders, so it reported a folder on the desktop as missing. The system prompt now states the home folder and the known folders (`environment_statement`).
+- **Typing instead of speaking.** `python -m voice.cli --text` runs the same model, tools and persona with typed input and printed output: no microphone, no speech models, nothing played. Useful where talking is not possible and for trying behaviour quickly.
+
+Still open: a 4B model, which the planner picks when the desktop leaves less than ~6.75 GiB free, is less reliable at using tools than the 9B one (in one typed run two of three file questions ended in the give-up reply, and the same questions asked one at a time worked). That has not been measured systematically yet.
 
 ### The reply voice now follows the reply
 

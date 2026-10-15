@@ -33,6 +33,15 @@ _CODE_BLOCK = re.compile(r"```.*?```", re.DOTALL)
 _INLINE_CODE = re.compile(r"`([^`]*)`")
 _URL = re.compile(r"https?://\S+")
 _MARKDOWN = re.compile(r"[*_#>]+")
+# An underscore between two word characters is part of a name (meeting_notes),
+# not emphasis: it becomes a space, or the name is spoken as one long word.
+_SNAKE_CASE = re.compile(r"(?<=\w)_(?=\w)")
+# "hello.py" is spoken "hello": spelling the extension out ("dot p y") was measured to
+# come out 20-30% faster than ordinary speech and mumbled, and the screen shows the name.
+_FILE_NAME = re.compile(
+    r"\b([\w-]+)\.(txt|py|md|json|csv|pdf|docx?|xlsx?|png|jpe?g|exe|bat|sh|zip|log|ya?ml|toml)\b",
+    re.IGNORECASE,
+)
 
 
 # What is said aloud in place of things that cannot be read out. These are
@@ -49,8 +58,26 @@ def clean_for_speech(text: str, language: str = "en") -> str:
     text = _CODE_BLOCK.sub(f" {words['code']} ", text)
     text = _INLINE_CODE.sub(r"\1", text)
     text = _URL.sub(f" {words['url']} ", text)
+    text = _SNAKE_CASE.sub(" ", text)
+    text = _FILE_NAME.sub(lambda m: m.group(1), text)
     text = _MARKDOWN.sub("", text)
     return re.sub(r"\s+", " ", text).strip()
+
+
+# A small model ends nearly every answer with an offer ("Would you like me to read
+# any of them?"). Said aloud it reads as a script, and it is dead time before the
+# user can speak. Matched on the start of a sentence, English and Turkish.
+_CLOSING_OFFER = re.compile(
+    "^(?:would you like|do you want|shall i|should i|can i help|is there anything|"
+    "let me know|if you(?:'d| would) like|want me to|anything else|"
+    "ister misin|ister misiniz|istersen|isterseniz|başka bir şey|yardımcı olabilir miyim)(?![a-zçğıöşü])"
+)
+
+
+def is_closing_offer(sentence: str) -> bool:
+    """True for a sentence that only offers more ("Would you like me to ...?")."""
+    text = sentence.strip().lower().replace(chr(0x307), "")  # Turkish capital I lowercases with a dot
+    return bool(_CLOSING_OFFER.match(text))
 
 
 class SentenceStreamer:

@@ -125,6 +125,7 @@ python -m voice.cli --info          # show detected hardware and the chosen prof
 python -m voice.cli                 # echo mode: test your microphone and speakers, no LLM
 python -m voice.cli --llm           # talk to Halcyon
 python -m voice.cli --llm --profile battery   # force the CPU profile
+python -m voice.cli --text          # type instead of speaking: no microphone, nothing played
 python -m voice.cli --llm --profile gpu-4b-8k # force a specific GPU configuration
 python -m voice.cli --devices       # list audio devices, then pass --input / --output
 ```
@@ -138,7 +139,7 @@ pip install -r requirements-test.txt
 pytest
 ```
 
-142 tests, about one second, and **no microphone, GPU or Ollama server required**: the hardware and the model server are replaced by fakes, so what gets tested is the project's own logic — sentence splitting, profile selection, the VRAM planner (including what it would choose for cards from 4 to 32 GB), the spill-and-step-down loop, the end-of-speech state machine, the tool-calling loop and conversation memory. They run on every push on Ubuntu and Windows via GitHub Actions.
+177 tests, about one second, and **no microphone, GPU or Ollama server required**: the hardware and the model server are replaced by fakes, so what gets tested is the project's own logic — sentence splitting, profile selection, the VRAM planner (including what it would choose for cards from 4 to 32 GB), the spill-and-step-down loop, the end-of-speech state machine, the tool-calling loop and conversation memory. They run on every push on Ubuntu and Windows via GitHub Actions.
 
 The tests were checked by deliberately breaking the code: a one-character change to a threshold, and reverting a past bug fix, each turned exactly the right test red.
 

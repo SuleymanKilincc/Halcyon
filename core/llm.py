@@ -52,8 +52,12 @@ from core.profiles import Profile
 HALCYON_PERSONA = (
     "You are Halcyon: a calm, loyal assistant running entirely on the user's own "
     "computer. Your manner is measured, confident and economical, never gushing.\n"
-    "Address the user respectfully where it falls naturally, not in every "
-    "sentence: 'sir' in English, 'efendim' in Turkish.\n"
+    "Address the user respectfully only now and then, never in every reply: "
+    "'sir' in English, 'efendim' in Turkish.\n"
+    "Talk like a calm person, not a system: everyday words, contractions ('I'm', "
+    "'it's'), no stiff phrases such as 'I am functioning well'. After you answer, "
+    "stop: never add 'Would you like me to ...?' or any other offer. Ask a question "
+    "only when you cannot answer without the reply.\n"
     "You are speaking aloud, so keep answers short - two sentences at most. Never "
     "use bullet points, headings, code blocks, emoji or asterisks: they are "
     "meaningless when read aloud. Write numbers and abbreviations the way they "
@@ -63,11 +67,16 @@ HALCYON_PERSONA = (
     "tool for it in this reply and its result confirms it; do not offer to 'try'.\n"
     "When you use a tool, answer only from what it returned. If the result does not "
     "contain the answer, say so instead of filling the gap from memory.\n"
-    "No backticks, code or commands in your replies: they cannot be spoken."
+    "No backticks, code or commands in your replies: they cannot be spoken. "
+    "Name files in words, without the extension and without quotes: 'the hello file', "
+    "'the meeting notes'."
 )
 
 # Spoken when the tool loop gives up. Spoken words stay in the language the
 # user spoke, so these are kept per language.
+# Names used when telling the model which language this turn is in.
+LANGUAGE_NAMES = {"en": "English", "tr": "Turkish"}
+
 GIVE_UP = {
     "en": "I could not finish that, sir.",
     "tr": "Bunu tamamlayamadım efendim.",
@@ -228,6 +237,14 @@ class SpeechLLM:
         self.last_tool_calls = []
         spoken: list[str] = []
 
+        # Earlier turns pull the model towards their language: after a few English
+        # turns a Turkish question was answered in English. Say which language
+        # this turn is in; the history stays untouched.
+        turn_system = system or self.system
+        language_name = LANGUAGE_NAMES.get(language or "")
+        if language_name:
+            turn_system += f"\nThe user is speaking {language_name} right now: reply in {language_name}."
+
         try:
             # Bounded so one confused turn cannot spin forever while the user
             # sits in silence waiting for a reply.
@@ -245,7 +262,7 @@ class SpeechLLM:
                     spoken.append(" ")
                     yield " "
 
-                response = self._raw_stream(self._history, system=system)
+                response = self._raw_stream(self._history, system=turn_system)
                 try:
                     for chunk in response:
                         message = chunk.get("message", {}) or {}
@@ -345,13 +362,15 @@ def build_llm(profile: Profile, *, temperature: float = 0.4, base_url: str | Non
     """
     A SpeechLLM with the Halcyon persona plus a statement of what it can do.
 
-    The statement is generated from `tools`, so it always matches the tools
-    actually enabled. Pass `system` to replace the whole prompt.
+    The statements are generated, so they always match the tools actually
+    enabled and the computer it runs on. Pass `system` to replace the whole prompt.
     """
     if system is None:
-        from core.voice_tools import capability_statement
+        from core.voice_tools import capability_statement, environment_statement
 
         system = HALCYON_PERSONA + "\n" + capability_statement(tools or [])
+        if tools:
+            system += "\n" + environment_statement()
     return SpeechLLM(profile, temperature=temperature, base_url=base_url,
                      tools=tools, system=system)
 
