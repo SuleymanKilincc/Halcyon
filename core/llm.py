@@ -127,6 +127,13 @@ class SpeechLLM:
         self._tools = {t.name: t for t in (tools or [])}
         self._tool_specs = [_to_ollama_tool(t) for t in (tools or [])]
 
+        # What a mode (core/router.py) can change on top of a profile. `base_system` is
+        # the prompt this client was built with, so leaving a mode can restore it.
+        self.base_system = system
+        self._tools_enabled = True
+        self._supports_thinking = True
+        self._switching = threading.Event()
+
         self._prewarm_lock = threading.Lock()
         self._prewarming = False
         self.last_tool_calls: list[str] = []
@@ -143,6 +150,31 @@ class SpeechLLM:
         self.model = profile.llm_model
         self._options["num_ctx"] = profile.llm_num_ctx
         self._options["num_predict"] = profile.llm_num_predict
+
+    def tool_objects(self) -> list[Any]:
+        """The tools this client was built with (a mode describes them in its own prompt)."""
+        return list(self._tools.values())
+
+    def apply_mode(self, profile: Profile, *, system: str | None = None, use_tools: bool = True,
+                   supports_thinking: bool = True) -> None:
+        """
+        Run as `profile` with a mode's prompt, keeping the conversation.
+
+        `use_tools` and `supports_thinking` come from asking Ollama what the model can do
+        (model_capabilities): sending `tools` to a model without them, or `think` to a
+        model that cannot, is an error rather than being ignored.
+        """
+        self.reconfigure(profile)
+        self.system = self.base_system if system is None else system
+        self._tools_enabled = use_tools
+        self._supports_thinking = supports_thinking
+
+    def begin_switch(self) -> None:
+        """A model swap is in progress: background wake-ups must not load the old model again."""
+        self._switching.set()
+
+    def end_switch(self) -> None:
+        self._switching.clear()
 
     def placement(self) -> tuple[float, float] | None:
         """
@@ -187,6 +219,8 @@ class SpeechLLM:
         while the user is still talking instead of after they finish. Cheap
         enough to fire on every utterance: one token, no history, no tools.
         """
+        if self._switching.is_set():
+            return  # a model swap is under way; waking the old model would load it again
         with self._prewarm_lock:
             if self._prewarming:
                 return
@@ -218,10 +252,12 @@ class SpeechLLM:
             "model": self.model,
             "messages": [{"role": "system", "content": system or self.system}, *messages],
             "stream": True,
-            "think": self.profile.llm_reasoning,
             "options": options,
         }
-        if use_tools and self._tool_specs:
+        # A model that cannot think rejects the parameter instead of ignoring it.
+        if self._supports_thinking or self.profile.llm_reasoning:
+            payload["think"] = self.profile.llm_reasoning
+        if use_tools and self._tool_specs and self._tools_enabled:
             payload["tools"] = self._tool_specs
         return self._client.chat(**payload)
 
@@ -424,6 +460,30 @@ def check_model_available(profile: Profile, *, base_url: str | None = None) -> t
         f"    ollama pull {profile.llm_model}\n"
         f"  Installed models: {', '.join(sorted(names)) or '(none)'}"
     )
+
+
+def model_capabilities(model: str, base_url: str | None = None) -> set[str] | None:
+    """
+    What Ollama says the model can do ("completion", "tools", "thinking", "vision" ...).
+
+    None when it cannot be asked (Ollama down, an older Ollama that does not report
+    capabilities): callers then keep their defaults instead of guessing.
+    """
+    if base_url is None:
+        import config
+
+        base_url = config.OLLAMA_BASE_URL
+    request = urllib.request.Request(
+        f"{base_url}/api/show",
+        data=json.dumps({"model": model}).encode(),
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=5) as response:
+            capabilities = json.load(response).get("capabilities")
+    except Exception:  # noqa: BLE001
+        return None
+    return set(capabilities) if capabilities else None
 
 
 def measure_idle_penalty(profile: Profile, gaps: tuple[int, ...] = (0, 10)) -> dict[int, float]:

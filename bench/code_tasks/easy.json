@@ -1,0 +1,50 @@
+[
+  {
+    "id": "roman",
+    "prompt": "Write a Python function roman_to_int(s) that converts a Roman numeral (I, V, X, L, C, D, M, with subtractive pairs like IV, IX, XL, XC, CD, CM) to an integer.",
+    "tests": "assert roman_to_int('III')==3\nassert roman_to_int('IV')==4\nassert roman_to_int('MCMXCIV')==1994\nassert roman_to_int('XLII')==42\nassert roman_to_int('CDXLIV')==444",
+    "reference": "def roman_to_int(s):\n    v = {'I': 1, 'V': 5, 'X': 10, 'L': 50, 'C': 100, 'D': 500, 'M': 1000}\n    total = 0\n    for i, c in enumerate(s):\n        if i + 1 < len(s) and v[c] < v[s[i + 1]]:\n            total -= v[c]\n        else:\n            total += v[c]\n    return total\n"
+  },
+  {
+    "id": "intervals",
+    "prompt": "Write a Python function merge_intervals(intervals) that takes a list of [start, end] pairs (unsorted, may overlap or touch) and returns the merged list of pairs sorted by start. Touching intervals like [1,2] and [2,3] merge.",
+    "tests": "assert merge_intervals([[1,3],[2,6],[8,10],[15,18]])==[[1,6],[8,10],[15,18]]\nassert merge_intervals([[1,2],[2,3]])==[[1,3]]\nassert merge_intervals([])==[]\nassert merge_intervals([[5,6],[1,2]])==[[1,2],[5,6]]\nassert merge_intervals([[1,10],[2,3]])==[[1,10]]",
+    "reference": "def merge_intervals(intervals):\n    out = []\n    for s, e in sorted(intervals):\n        if out and s <= out[-1][1]:\n            out[-1][1] = max(out[-1][1], e)\n        else:\n            out.append([s, e])\n    return out\n"
+  },
+  {
+    "id": "lru",
+    "prompt": "Write a Python class LRUCache with __init__(self, capacity), get(self, key) returning -1 if absent, and put(self, key, value). When capacity is exceeded, evict the least recently used key. Both get and put count as a use.",
+    "tests": "c=LRUCache(2)\nc.put(1,1)\nc.put(2,2)\nassert c.get(1)==1\nc.put(3,3)\nassert c.get(2)==-1\nc.put(4,4)\nassert c.get(1)==-1\nassert c.get(3)==3\nassert c.get(4)==4\nc.put(3,30)\nassert c.get(3)==30",
+    "reference": "from collections import OrderedDict\n\n\nclass LRUCache:\n    def __init__(self, capacity):\n        self.capacity = capacity\n        self.data = OrderedDict()\n\n    def get(self, key):\n        if key not in self.data:\n            return -1\n        self.data.move_to_end(key)\n        return self.data[key]\n\n    def put(self, key, value):\n        self.data[key] = value\n        self.data.move_to_end(key)\n        if len(self.data) > self.capacity:\n            self.data.popitem(last=False)\n"
+  },
+  {
+    "id": "duration",
+    "prompt": "Write a Python function parse_duration(s) that turns strings like '1h30m15s', '45s', '2h', '10m5s' into total seconds (integer). Units are h, m, s in that order, each optional. Raise ValueError for an empty string or any other unit.",
+    "tests": "assert parse_duration('1h30m15s')==5415\nassert parse_duration('45s')==45\nassert parse_duration('2h')==7200\nassert parse_duration('10m5s')==605\nfor bad in ['', '5d', 'abc']:\n    try:\n        parse_duration(bad)\n    except ValueError:\n        pass\n    else:\n        raise AssertionError(bad)",
+    "reference": "import re\n\n\ndef parse_duration(s):\n    m = re.fullmatch(r\"(?:(\\d+)h)?(?:(\\d+)m)?(?:(\\d+)s)?\", s)\n    if not s or not m:\n        raise ValueError(s)\n    h, mi, se = (int(x or 0) for x in m.groups())\n    return h * 3600 + mi * 60 + se\n"
+  },
+  {
+    "id": "toposort",
+    "prompt": "Write a Python function topo_sort(graph) where graph is a dict mapping each node to a list of nodes it depends on (every node appears as a key). Return a list in which every node comes after its dependencies; when several are valid, any is fine. Raise ValueError if there is a cycle.",
+    "tests": "g={'a':['b','c'],'b':['c'],'c':[],'d':['a']}\no=topo_sort(g)\nassert sorted(o)==['a','b','c','d']\nfor n,deps in g.items():\n    for d in deps:\n        assert o.index(d)<o.index(n)\ntry:\n    topo_sort({'x':['y'],'y':['x']})\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError('cycle')\nassert topo_sort({})==[]",
+    "reference": "def topo_sort(graph):\n    out, state = [], {}\n\n    def visit(n):\n        if state.get(n) == 1:\n            raise ValueError(\"cycle\")\n        if state.get(n) == 2:\n            return\n        state[n] = 1\n        for d in graph[n]:\n            visit(d)\n        state[n] = 2\n        out.append(n)\n\n    for n in graph:\n        visit(n)\n    return out\n"
+  },
+  {
+    "id": "bugfix",
+    "prompt": "This function should return the index of target in the sorted list, or -1 if absent, but it is wrong for some inputs. Fix it and give the complete corrected function (keep the name binary_search).\n\n```python\ndef binary_search(xs, target):\n    lo, hi = 0, len(xs) - 1\n    while lo < hi:\n        mid = (lo + hi) // 2\n        if xs[mid] == target:\n            return mid\n        elif xs[mid] < target:\n            lo = mid\n        else:\n            hi = mid\n    return -1\n```",
+    "tests": "xs=[1,3,5,7,9,11]\nfor i,x in enumerate(xs):\n    assert binary_search(xs,x)==i\nassert binary_search(xs,4)==-1\nassert binary_search([],1)==-1\nassert binary_search([2],2)==0\nassert binary_search(xs,12)==-1\nassert binary_search(xs,0)==-1",
+    "reference": "def binary_search(xs, target):\n    lo, hi = 0, len(xs) - 1\n    while lo <= hi:\n        mid = (lo + hi) // 2\n        if xs[mid] == target:\n            return mid\n        elif xs[mid] < target:\n            lo = mid + 1\n        else:\n            hi = mid - 1\n    return -1\n"
+  },
+  {
+    "id": "brackets",
+    "prompt": "Write a Python function is_balanced(s) that returns True if all brackets ()[]{} in the string are balanced and correctly nested, ignoring all other characters.",
+    "tests": "assert is_balanced('')\nassert is_balanced('a(b[c]{d})e')\nassert not is_balanced('(]')\nassert not is_balanced('((')\nassert not is_balanced('())')\nassert is_balanced('{[()]}')\nassert not is_balanced('([)]')",
+    "reference": "def is_balanced(s):\n    pairs = {')': '(', ']': '[', '}': '{'}\n    stack = []\n    for ch in s:\n        if ch in '([{':\n            stack.append(ch)\n        elif ch in pairs:\n            if not stack or stack.pop() != pairs[ch]:\n                return False\n    return not stack\n"
+  },
+  {
+    "id": "wordfreq",
+    "prompt": "Write a Python function top_words(text, n) that returns the n most frequent words (lowercase, letters and apostrophes only, punctuation ignored) as a list of (word, count) tuples, sorted by count descending and alphabetically for ties.",
+    "tests": "t=\"The cat and the hat. The CAT sat; and it's the cat's hat, it's!\"\nr=top_words(t,3)\nassert r[0]==('the',4), r\nassert r[1]==('and',2) or r[1]==('cat',2), r\nassert len(r)==3\nassert top_words('',2)==[]\nassert top_words('b a b a c',2)==[('a',2),('b',2)]",
+    "reference": "import re\nfrom collections import Counter\n\n\ndef top_words(text, n):\n    counts = Counter(re.findall(r\"[a-z']+\", text.lower()))\n    return sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:n]\n"
+  }
+]

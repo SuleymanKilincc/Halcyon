@@ -19,6 +19,7 @@ Halcyon listens continuously, notices when you stop talking, transcribes your sp
 - **Conversation memory** — follow-up questions like *"how many were there?"* resolve against earlier turns.
 - **Knows its limits** — told exactly which actions are switched off and why, it declines them plainly and offers what it can do; it answers from tool results instead of filling gaps from memory. Measured before and after on 15 requests.
 - **Adapts to the GPU** — picks the largest models that fit the card's free memory, checks after loading that nothing spilled onto the CPU, and steps down on its own if it did. Lightweight CPU models when no GPU is available.
+- **Modes, with a say in it** — a request is placed by kind and size; when a big coding job or a long story would deserve a larger model, Halcyon says so, names the wait and the reason ("about 30 to 120 seconds, because I have to unload the current model and load the deep one"), and switches only after a yes. Never behind your back. The model behind **deep mode** is chosen from the hardware as a *pack* (Standard or Light), measured on the development card and estimated for others. See [docs/MODES.md](docs/MODES.md).
 
 ## Measured performance
 
@@ -126,6 +127,7 @@ python -m voice.cli                 # echo mode: test your microphone and speake
 python -m voice.cli --llm           # talk to Halcyon
 python -m voice.cli --llm --profile battery   # force the CPU profile
 python -m voice.cli --text          # type instead of speaking: no microphone, nothing played
+python -m voice.cli --llm --no-modes # never offer to switch to deep or research mode
 python -m voice.cli --llm --profile gpu-4b-8k # force a specific GPU configuration
 python -m voice.cli --devices       # list audio devices, then pass --input / --output
 ```
@@ -139,23 +141,23 @@ pip install -r requirements-test.txt
 pytest
 ```
 
-177 tests, about one second, and **no microphone, GPU or Ollama server required**: the hardware and the model server are replaced by fakes, so what gets tested is the project's own logic — sentence splitting, profile selection, the VRAM planner (including what it would choose for cards from 4 to 32 GB), the spill-and-step-down loop, the end-of-speech state machine, the tool-calling loop and conversation memory. They run on every push on Ubuntu and Windows via GitHub Actions.
+329 tests, about six seconds, and **no microphone, GPU or Ollama server required**: the hardware and the model server are replaced by fakes, so what gets tested is the project's own logic — sentence splitting, profile selection, the VRAM planner (including what it would choose for cards from 4 to 32 GB), the spill-and-step-down loop, the end-of-speech state machine, the tool-calling loop and conversation memory, and the mode rules and switching conversation. They run on every push on Ubuntu and Windows via GitHub Actions.
 
 The tests were checked by deliberately breaking the code: a one-character change to a threshold, and reverting a past bug fix, each turned exactly the right test red.
 
 ## Project structure
 
 ```
-core/               hardware detection, VRAM planner, placement check, LLM client, voice tools
+core/               hardware detection, VRAM planner, placement check, LLM client, voice tools, modes (rules + conversation), model packs
 voice/              the speech pipeline: VAD, STT, TTS, audio I/O, turn state machine, CLI
-bench/              latency, recognition quality, honesty about capabilities, memory per model
+bench/              latency, recognition quality, honesty about capabilities, memory per model, code and world-keeping evaluations for the deep-mode models
 tests/              automated tests (pytest)
 scripts/manual/     interactive checks that need a human (audio, windows, keyboard input)
 tools.py            tool implementations (files, terminal, web, browser, archives, hardware)
 agent.py            text-mode agent with the full tool set (LangGraph)
 gui.py              desktop UI (still on the legacy voice pipeline)
 database.py         SQLite session storage
-docs/               VOICE.md (pipeline + measurements), LICENSES.md, MEMORY.md (embedding model choice); archive/HISTORY.md (how the project got here)
+docs/               VOICE.md (pipeline + measurements), MODES.md (deep / research modes, packs, measurements), MODEL_SELECTION.md (how the models were chosen, and what the evidence does not show), LICENSES.md, MEMORY.md (embedding model choice); archive/HISTORY.md (how the project got here)
 ```
 
 ## Limitations
@@ -180,8 +182,9 @@ Ordered by what unlocks the most next. Nothing here is promised for a date; item
 **Next**
 - [ ] **Wake word** ("Hey Halcyon") so it only listens when addressed. Removes the accidental replies to side conversations and to speech-model phantoms. Needs a dedicated audio detector: the recogniser writes the name correctly only 10 times in 12, even with a hint ([measured](docs/VOICE.md#can-the-recogniser-write-the-name)).
 - [ ] **Spoken confirmation layer + audit log.** Asks before it writes, deletes or runs anything, and logs what it did. Unlocks the file and shell tools by voice.
+- [ ] **Long scenarios and more machines.** Deep mode and its two packs exist and are measured on one machine ([docs/MODES.md](docs/MODES.md)); a story that runs for hours needs a persistent world file kept outside the chat context, the packs for smaller and larger machines are estimates until someone runs them, and spoken code needs a screen channel so it can be shown while the voice describes it.
 - [ ] **Faster tool turns.** Tool-using replies currently take 3-4.5 s to first audio; speaking a short acknowledgement while the tool runs hides most of it.
-- [ ] **Easy setup.** A one-command installer that checks the GPU, picks the model size, and announces every download and its size before fetching it; later, a packaged Windows installer. The GPU planner and the download-size announcements already exist; the installer wrapped around them does not.
+- [ ] **Easy setup.** A one-command installer that checks the GPU, picks the model size and the deep-mode pack (core/packs.py already says which fits), and announces every download and its size before fetching it; later, a packaged Windows installer. The GPU planner and the download-size announcements already exist; the installer wrapped around them does not.
 
 **Then**
 - [ ] **Persistent memory** with semantic search, stored locally.
