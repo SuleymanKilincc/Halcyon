@@ -16,7 +16,9 @@ from core.modes import (
     deep_mode,
     default_modes,
     explicit_mode,
+    is_refusal,
     parse_confirmation,
+    refused_mode,
     say,
     seconds_phrase,
 )
@@ -265,3 +267,49 @@ def test_no_spoken_sentence_starts_like_a_closing_offer():
             text = say(key, language, mode=modes["deep"], current=modes["general"], seconds="x")
             for sentence in text.replace("?", "?.").split("."):
                 assert not is_closing_offer(sentence), (language, key, sentence)
+
+
+# ------------------------------------------------------- refusals (found in review)
+
+@pytest.mark.parametrize("text", [
+    "I don't want to switch to deep mode",
+    "I don\u2019t want to switch to deep mode",          # the apostrophe a phone keyboard types
+    "do not switch to code mode",
+    "never use deep mode",
+    "derin moda geçme",
+    "kod moduna geçmeyelim",
+    "derin modu istemiyorum",
+    "genel moda dönme",
+])
+def test_a_refusal_that_names_a_mode_is_not_a_request_for_it(text):
+    assert explicit_mode(text) is None
+    assert refused_mode(text) is not None
+    assert is_refusal(text)
+
+
+@pytest.mark.parametrize("text", [
+    "No, just do it here",
+    "Hayır, burada devam et",
+    "Nope, stay where we are",
+    "I'd rather not switch",
+    "No thanks, answer it here",
+])
+def test_a_refusal_in_a_sentence_is_read_as_no(text):
+    assert is_refusal(text)
+
+
+@pytest.mark.parametrize("text", [
+    "yes please",
+    "Write me a function that sorts a list",
+    "What does deep mode do?",
+    "switch to deep mode",
+    "Bunu şimdi yap",
+])
+def test_an_answer_or_a_request_is_not_a_refusal(text):
+    assert not is_refusal(text)
+
+
+def test_an_inflected_turkish_coding_request_is_recognised():
+    """'kod' with a long Turkish ending used to fall outside the rule and read as chat."""
+    intent = classify("Kodlamalarımızı baştan sona incele")
+    assert (intent.category, intent.tier) == ("code", 2), intent

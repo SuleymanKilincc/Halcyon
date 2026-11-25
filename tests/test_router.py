@@ -403,3 +403,58 @@ def test_the_missing_model_message_names_the_pack_and_its_size():
     controller, _, logged = make(installed=())
     turn(controller, BIG_EN)
     assert any("Standard pack, about 18 GB" in line and "ollama pull gemma4:26b-a4b" in line for line in logged)
+
+
+# ------------------------------------------------------- found in review
+
+def test_refusing_a_mode_by_name_never_switches_to_it():
+    controller, llm, _ = make()
+    reply = turn(controller, "I don't want to switch to deep mode")
+    assert controller.current.key == "general" and llm.events == []
+    assert reply == f"[{PERFORMANCE.llm_model}] answer"
+    assert "Shall we" not in turn(controller, BIG_EN)        # and it is not offered right after
+
+
+def test_a_refusal_in_a_sentence_answers_the_waiting_request_here():
+    controller, llm, _ = make()
+    turn(controller, BIG_EN)
+    reply = turn(controller, "No, just do it here")
+    assert reply.startswith("All right, staying in general mode.")
+    assert llm.asked[-1][2] == BIG_EN                         # the request that was waiting
+    assert llm.events == []
+
+
+def test_a_refusal_with_a_new_request_attached_answers_the_new_request():
+    controller, llm, _ = make()
+    turn(controller, BIG_EN)
+    turn(controller, "No, instead tell me what the capital of France is please")
+    assert llm.asked[-1][2].startswith("No, instead")
+    assert llm.events == []
+
+
+def test_research_mode_from_deep_mode_quotes_a_real_wait_not_zero():
+    controller, _, _ = make()
+    turn(controller, "switch to deep mode")
+    reply = turn(controller, "Research the pros and cons of electric cars in depth, with detailed reports and sources")
+    assert "0 to 0" not in reply and "15 to 30 seconds" in reply
+
+
+def test_entering_a_mode_by_name_does_not_offer_to_leave_it_on_the_next_turn():
+    controller, _, _ = make()
+    for _ in range(3):
+        turn(controller, CHAT)
+    turn(controller, "switch to deep mode")
+    assert "Shall we go back" not in turn(controller, CHAT)
+
+
+def test_after_a_startup_step_down_general_mode_is_the_smaller_model():
+    """fit_to_gpu may step down after the controller exists; leaving a mode must not reload the bigger model."""
+    from dataclasses import replace
+
+    controller, llm, _ = make()
+    smaller = replace(PERFORMANCE, llm_model="qwen3.5:4b")
+    llm.apply_mode(smaller)                  # what fit_to_gpu does through the client
+    controller.rebase()
+    turn(controller, "switch to deep mode")
+    turn(controller, "genel moda dön")
+    assert llm.model == "qwen3.5:4b"
