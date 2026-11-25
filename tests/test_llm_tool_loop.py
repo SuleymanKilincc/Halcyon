@@ -7,9 +7,12 @@ reaching the model, the history being carried, text from two generation rounds
 being joined with a space - without a model, a GPU or a network.
 """
 
+import json
+
+import pytest
 from langchain_core.tools import tool
 
-from core.llm import SpeechLLM, _to_ollama_tool
+from core.llm import ACT_NOW_NOTE, FINAL_ROUND_NOTE, SpeechLLM, _to_ollama_tool, announces_action
 from core.profiles import PERFORMANCE
 
 
@@ -242,3 +245,99 @@ def test_a_swap_waits_for_a_wake_up_that_was_already_running():
     assert finished.is_set(), "the swap went ahead while the wake-up was still in flight"
     assert time.perf_counter() - started < 5
     llm.end_switch()
+
+
+# -------------------------------------------------- the tool loop, as measured by bench/task_eval.py
+
+def test_a_turn_that_uses_every_round_still_ends_in_an_answer():
+    """It used to end with "I could not finish that" after reading two folders and a file."""
+    llm = make_llm([[tool_call("shout", word="a")], [tool_call("shout", word="b")], [text("Here is what I found.")]],
+                   tools=[shout])
+    llm.max_tool_rounds = 2
+    assert "".join(llm.stream("go")) == "Here is what I found."
+    first, second, last = llm._client.requests
+    assert "tools" in first and "tools" in second
+    assert "tools" not in last                                  # the last round can only answer
+    assert FINAL_ROUND_NOTE in last["messages"][0]["content"]
+    assert FINAL_ROUND_NOTE not in first["messages"][0]["content"]
+
+
+def test_a_reply_that_only_announces_an_action_is_sent_back_once_to_do_it():
+    """"Let me check the other source files." and then nothing: measured on the 9B model."""
+    llm = make_llm([[text("Let me check the file.")], [tool_call("shout", word="ok")], [text("It says OK.")]],
+                   tools=[shout])
+    assert "".join(llm.stream("what does it say?")) == "Let me check the file. It says OK."
+    assert ACT_NOW_NOTE in llm._client.requests[1]["messages"][0]["content"]
+    assert llm.last_tool_calls == ["shout"]
+
+
+def test_the_nudge_is_given_once_per_turn():
+    llm = make_llm([[text("Let me check.")], [text("Let me check again.")]], tools=[shout])
+    "".join(llm.stream("go"))
+    assert len(llm._client.requests) == 2
+
+
+def test_no_nudge_without_tools():
+    llm = make_llm([[text("Let me check.")]])
+    "".join(llm.stream("go"))
+    assert len(llm._client.requests) == 1
+
+
+@pytest.mark.parametrize("reply", [
+    "Let me check the other source files.",
+    "I'll look at the log now.",
+    "Dosyayı okuyup bakayım.",
+    "Dosyayı okuyarak toplantı tarihini bulabilirim. Bekleyin, dosyayı açıyorum.",
+    "Dosya bulunamadı. Klasörün içindeki dosyaları listeleyeyim mi?",
+])
+def test_announcements_are_recognised_in_both_languages(reply):
+    assert announces_action(reply)
+
+
+@pytest.mark.parametrize("reply", [
+    "The server listens on port 8080.",
+    "Let me know if you need anything else.",
+    "Varsayılan port 8080 efendim.",
+    "",
+    "The log has two errors; the last one says the disk quota was exceeded. " * 6 + "Let me check more.",
+])
+def test_answers_are_not_announcements(reply):
+    assert not announces_action(reply)
+
+
+@tool
+def dump(n: int) -> str:
+    """Return a large block of text."""
+    return f"result {n} " + "x" * 3900
+
+
+def test_many_large_results_in_one_turn_are_fitted_to_the_context_and_the_newest_kept_whole():
+    """Ollama drops the oldest tokens of an overlong prompt silently, the system prompt first."""
+    from dataclasses import replace
+
+    llm = make_llm([[tool_call("dump", n=i)] for i in range(5)] + [[text("done")]], tools=[dump])
+    llm.apply_mode(replace(PERFORMANCE, llm_num_ctx=4096))
+    llm.max_tool_rounds = 8
+    assert "".join(llm.stream("go")) == "done"
+    last = llm._client.requests[-1]
+    system, messages = last["messages"][0]["content"], last["messages"][1:]
+    used = sum(len(str(m.get("content") or "")) + len(json.dumps(m.get("tool_calls") or "")) + 16 for m in messages)
+    assert used <= llm._context_budget_chars(system, use_tools=True)
+    results = [m["content"] for m in messages if m["role"] == "tool"]
+    assert results[-1] == "result 4 " + "x" * 3900                    # the newest, whole
+    assert all("shortened" in r for r in results[:-1])
+    assert messages[0] == {"role": "user", "content": "go"}           # the question is kept
+    stored = [m["content"] for m in llm._history if m.get("role") == "tool"]
+    assert stored[0] == "result 0 " + "x" * 3900                       # the history itself is untouched
+
+
+def test_a_cut_tool_result_says_how_to_get_the_rest():
+    @tool
+    def huge() -> str:
+        """Return too much."""
+        return "y" * 9000
+
+    llm = make_llm([[tool_call("huge")], [text("ok")]], tools=[huge])
+    "".join(llm.stream("go"))
+    result = next(m for m in llm._history if m.get("role") == "tool")["content"]
+    assert result.endswith("ask for a smaller part)") and "of 9000 characters" in result

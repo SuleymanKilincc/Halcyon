@@ -29,7 +29,14 @@ from collections.abc import Iterator
 
 from core.hardware import detect
 from core.fit import fit_to_gpu
-from core.llm import build_llm, check_model_available, installed_models, stream_reply
+from core.llm import (
+    SPOKEN_TOOL_ROUNDS,
+    TYPED_TOOL_ROUNDS,
+    build_llm,
+    check_model_available,
+    installed_models,
+    stream_reply,
+)
 from core.modes import default_modes
 from core.packs import describe as describe_packs
 from core.profiles import PROFILES, apply_to_voice_settings, resolve
@@ -72,6 +79,8 @@ def make_llm_handler(profile, tools, *, modes=True, spoken=True, hardware=None, 
     model deep mode runs on follows from the hardware (core/packs.py).
     """
     llm = build_llm(profile, tools=tools)
+    # Typing can wait for a deeper search; a spoken turn should not go silent for long.
+    llm.max_tool_rounds = SPOKEN_TOOL_ROUNDS if spoken else TYPED_TOOL_ROUNDS
     # Load the weights now. Otherwise the first thing the user says pays a
     # 3.7-6.7 s cold start and it looks like the assistant is broken.
     print(f"Warming up the model ({profile.llm_model})...")
