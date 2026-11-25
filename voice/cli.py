@@ -30,7 +30,10 @@ from collections.abc import Iterator
 from core.hardware import detect
 from core.fit import fit_to_gpu
 from core.llm import build_llm, check_model_available, installed_models, stream_reply
+from core.modes import default_modes
+from core.packs import describe as describe_packs
 from core.profiles import PROFILES, apply_to_voice_settings, resolve
+from core.router import ModeController
 from core.voice_tools import describe_voice_tools, get_voice_tools
 from voice.language import guess_language
 from voice.pipeline import State, TurnTimings, VoiceEvents, VoiceLoop
@@ -59,12 +62,28 @@ def make_echo_handler():
     return handler
 
 
-def make_llm_handler(profile, tools):  # noqa: ANN001
+def make_llm_handler(profile, tools, *, modes=True, spoken=True, hardware=None, installed=None):  # noqa: ANN001
+    """
+    The language model and the handler that talks to it, plus the mode controller (or None).
+
+    With modes on, the handler is the controller's: it reads each request, offers a
+    switch to deep mode or research mode when the request is big enough to deserve one
+    (core/modes.py), and otherwise answers exactly as the plain handler does. Which
+    model deep mode runs on follows from the hardware (core/packs.py).
+    """
     llm = build_llm(profile, tools=tools)
     # Load the weights now. Otherwise the first thing the user says pays a
     # 3.7-6.7 s cold start and it looks like the assistant is broken.
     print(f"Warming up the model ({profile.llm_model})...")
     llm.warmup()
+
+    if modes:
+        available = default_modes(hardware=hardware, installed=installed)
+        if "deep" not in available:
+            print("[modes] No deep-mode pack fits this machine, so everything runs in general mode "
+                  "(python -m voice.cli --info lists the packs and what they need).")
+        controller = ModeController(llm, spoken=spoken, modes=available)
+        return llm, controller.handler, controller
 
     def handler(transcript: Transcript) -> Iterator[str]:
         # The language of the words, not Whisper's guess about the audio: an
@@ -72,10 +91,10 @@ def make_llm_handler(profile, tools):  # noqa: ANN001
         language = guess_language(transcript.text, fallback=transcript.language)
         yield from stream_reply(llm, transcript.text, language=language)
 
-    return llm, handler
+    return llm, handler, None
 
 
-def run_typed(handler, llm, read_line=input, write=print, clock=time.perf_counter) -> int:
+def run_typed(handler, llm, read_line=input, write=print, clock=time.perf_counter, status=None) -> int:
     """
     Type instead of speaking: no microphone, no speech models, nothing played.
 
@@ -117,7 +136,8 @@ def run_typed(handler, llm, read_line=input, write=print, clock=time.perf_counte
             continue
         write()
         tools = ", ".join(llm.last_tool_calls) if llm is not None and llm.last_tool_calls else "none"
-        write(f"  \033[90mtools: {tools} | first text {first_at - started:.1f} s\033[0m")
+        extra = f" | {status()}" if status is not None else ""
+        write(f"  \033[90mtools: {tools} | first text {first_at - started:.1f} s{extra}\033[0m")
 
 
 def main() -> int:
@@ -136,6 +156,8 @@ def main() -> int:
     parser.add_argument("--output", default=None, help="output device index or name")
     parser.add_argument("--no-barge-in", action="store_true", help="disable interruption")
     parser.add_argument("--no-tools", action="store_true", help="disable tool calling")
+    parser.add_argument("--no-modes", action="store_true",
+                        help="never offer to switch to deep or research mode (see docs/MODES.md)")
     parser.add_argument("--unsafe-tools", action="store_true",
                         help="also expose the mutating tools (no approval layer yet)")
     args = parser.parse_args()
@@ -165,6 +187,7 @@ def main() -> int:
     print(profile.describe())
     print()
     if args.info:
+        print(describe_packs(hardware, installed_models()))
         return 0
 
     settings = apply_to_voice_settings(profile, DEFAULT, hardware)
@@ -176,6 +199,7 @@ def main() -> int:
         settings.barge_in.enabled = False
 
     llm = None
+    controller = None
     tools = []
     if args.llm:
         available, problem = check_model_available(profile)
@@ -185,7 +209,9 @@ def main() -> int:
         if not args.no_tools:
             tools = get_voice_tools(include_gated=args.unsafe_tools)
             print(f"Tools: {describe_voice_tools(include_gated=args.unsafe_tools)}")
-        llm, handler = make_llm_handler(profile, tools)
+        llm, handler, controller = make_llm_handler(profile, tools, modes=not args.no_modes,
+                                                    spoken=not args.text, hardware=hardware,
+                                                    installed=installed)
         # The plan was chosen from measured sizes; confirm the card agrees.
         profile = fit_to_gpu(llm, profile, installed)
         # A step down may also have changed the speech model; Whisper is
@@ -195,7 +221,7 @@ def main() -> int:
         handler = make_echo_handler()
 
     if args.text:
-        return run_typed(handler, llm)
+        return run_typed(handler, llm, status=controller.status if controller else None)
 
     def on_speech_start() -> None:
         # The GPU drops into a low-power state when idle and costs ~2 s to
@@ -215,6 +241,8 @@ def main() -> int:
     def on_done(text: str) -> None:
         if llm is not None and llm.last_tool_calls:
             print(f"  \033[90mtools: {', '.join(llm.last_tool_calls)}\033[0m")
+        if controller is not None:
+            print(f"  \033[90m{controller.status()}\033[0m")
         print(f"\033[96mHalcyon\033[0m: {text.strip()}")
 
     def on_barge_in() -> None:
