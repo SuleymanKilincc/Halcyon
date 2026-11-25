@@ -22,6 +22,7 @@ All direct dependencies in `requirements.txt` are MIT, BSD or Apache-2.0 except 
 | Whisper `large-v3-turbo` (faster-whisper conversion) | MIT | Speech recognition | |
 | Silero VAD | MIT | Detecting speech | |
 | `qwen3.5` (2B / 4B / 9B, via Ollama) | Apache-2.0 | The language model | |
+| `gemma4:26b-a4b`, `gemma4:e4b` (via Ollama) | Apache-2.0 | Deep mode ([MODES.md](MODES.md)) | Checked 2026-11-25 from the license text Ollama ships with each model. The earlier Gemma models were under the custom Gemma Terms; these two are not. |
 | `embeddinggemma` | Gemma Terms of Use | Planned memory search | Permits commercial use, but with use restrictions and terms that must be passed on if the model is redistributed. Not an open-source license. |
 | `bge-m3` | MIT | Planned memory search (alternative) | See [MEMORY.md](MEMORY.md) |
 | Piper voice `tr_TR-dfki-medium` | **CC BY-NC-SA 4.0** | Turkish voice | Non-commercial; adaptations must be shared alike. |
@@ -44,6 +45,6 @@ All direct dependencies in `requirements.txt` are MIT, BSD or Apache-2.0 except 
 - Piper voices: `MODEL_CARD` files in [rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices) for [tr_TR-dfki-medium](https://huggingface.co/rhasspy/piper-voices/raw/main/tr/tr_TR/dfki/medium/MODEL_CARD), [en_US-ryan-medium](https://huggingface.co/rhasspy/piper-voices/raw/main/en/en_US/ryan/medium/MODEL_CARD) and [en_US-libritts_r-medium](https://huggingface.co/rhasspy/piper-voices/raw/main/en/en_US/libritts_r/medium/MODEL_CARD); the catalogue listing of Turkish voices via the Hugging Face API.
 - openWakeWord: [README](https://github.com/dscripka/openWakeWord).
 - Whisper conversion: [model card](https://huggingface.co/mobiuslabsgmbh/faster-whisper-large-v3-turbo). `bge-m3`: [model card](https://huggingface.co/BAAI/bge-m3).
-- `qwen3.5` and `embeddinggemma`: the license text Ollama ships with each model (`ollama show <model> --license`); [Gemma Terms of Use](https://ai.google.dev/gemma/terms).
+- `qwen3.5`, `gemma4` and `embeddinggemma`: the license text Ollama ships with each model (`ollama show <model> --license`); [Gemma Terms of Use](https://ai.google.dev/gemma/terms).
 - XTTS-v2: [Coqui Public Model License](https://coqui.ai/cpml), as summarised by secondary sources.
 - Python packages: `pip-licenses` run on the development environment.
