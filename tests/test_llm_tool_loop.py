@@ -160,3 +160,52 @@ def test_the_language_note_is_not_kept_in_the_history():
     second = llm._client.requests[1]["messages"]
     assert second[0]["content"].endswith("reply in English.")
     assert not any("Turkish" in str(m.get("content", "")) for m in second[1:])
+
+
+# ------------------------------------------------------------- what a mode can change
+
+def test_a_model_that_cannot_think_is_not_sent_the_parameter():
+    llm = make_llm([[text("ok")]])
+    llm.apply_mode(PERFORMANCE, supports_thinking=False)
+    "".join(llm.stream("hello"))
+    assert "think" not in llm._client.requests[0]
+
+
+def test_think_is_sent_by_default():
+    llm = make_llm([[text("ok")]])
+    "".join(llm.stream("hello"))
+    assert llm._client.requests[0]["think"] is False
+
+
+def test_a_model_without_tools_is_not_sent_any():
+    llm = make_llm([[text("ok")]], tools=[shout])
+    llm.apply_mode(PERFORMANCE, use_tools=False)
+    "".join(llm.stream("hello"))
+    assert "tools" not in llm._client.requests[0]
+
+
+def test_a_mode_prompt_replaces_the_usual_one_and_leaving_restores_it():
+    llm = make_llm([[text("a")], [text("b")]])
+    original = llm.system
+    llm.apply_mode(PERFORMANCE, system="CODE PROMPT")
+    "".join(llm.stream("one"))
+    llm.apply_mode(PERFORMANCE)                      # no prompt: back to the one it was built with
+    "".join(llm.stream("two"))
+    assert llm._client.requests[0]["messages"][0]["content"] == "CODE PROMPT"
+    assert llm._client.requests[1]["messages"][0]["content"] == original == llm.base_system
+
+
+def test_the_conversation_survives_a_mode_change():
+    llm = make_llm([[text("a")], [text("b")]])
+    "".join(llm.stream("my name is Ada"))
+    llm.apply_mode(PERFORMANCE, system="CODE PROMPT")
+    "".join(llm.stream("what did I say?"))
+    assert any("Ada" in str(m.get("content", "")) for m in llm._client.requests[1]["messages"])
+
+
+def test_no_background_wake_up_while_a_model_is_being_swapped():
+    llm = make_llm([])          # no scripted answers: a wake-up would raise inside its thread
+    llm.begin_switch()
+    llm.prewarm()
+    assert llm._prewarming is False
+    llm.end_switch()
