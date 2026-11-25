@@ -289,6 +289,10 @@ def test_no_nudge_without_tools():
     "Dosyayı okuyup bakayım.",
     "Dosyayı okuyarak toplantı tarihini bulabilirim. Bekleyin, dosyayı açıyorum.",
     "Dosya bulunamadı. Klasörün içindeki dosyaları listeleyeyim mi?",
+    "Dosyayı okuyarak toplantı tarihini bulacağım.",
+    "Dosyanın geri kalanında bir hata olup olmadığını kontrol etmemi ister misiniz?",
+    "Dosyanın içeriğini okuyabilirim. Lütfen bu dosyayı okumam için izin verin.",
+    "The file was not found. Would you like me to check if the folder exists first?",
 ])
 def test_announcements_are_recognised_in_both_languages(reply):
     assert announces_action(reply)
@@ -300,6 +304,8 @@ def test_announcements_are_recognised_in_both_languages(reply):
     "Varsayılan port 8080 efendim.",
     "",
     "The log has two errors; the last one says the disk quota was exceeded. " * 6 + "Let me check more.",
+    "Shall I tell you a story about it?",
+    "Toplantı Perşembe günü saat 14:00'te.",
 ])
 def test_answers_are_not_announcements(reply):
     assert not announces_action(reply)
@@ -321,7 +327,7 @@ def test_many_large_results_in_one_turn_are_fitted_to_the_context_and_the_newest
     assert "".join(llm.stream("go")) == "done"
     last = llm._client.requests[-1]
     system, messages = last["messages"][0]["content"], last["messages"][1:]
-    used = sum(len(str(m.get("content") or "")) + len(json.dumps(m.get("tool_calls") or "")) + 16 for m in messages)
+    used = sum(len(str(m.get("content") or "")) + len(str(m.get("tool_calls") or "")) + 16 for m in messages)
     assert used <= llm._context_budget_chars(system, use_tools=True)
     results = [m["content"] for m in messages if m["role"] == "tool"]
     assert results[-1] == "result 4 " + "x" * 3900                    # the newest, whole
@@ -341,3 +347,17 @@ def test_a_cut_tool_result_says_how_to_get_the_rest():
     "".join(llm.stream("go"))
     result = next(m for m in llm._history if m.get("role") == "tool")["content"]
     assert result.endswith("ask for a smaller part)") and "of 9000 characters" in result
+
+
+def test_tool_calls_as_the_real_client_returns_them_do_not_break_the_loop():
+    """
+    The real ollama client returns ToolCall objects, not dicts, and json cannot serialise them:
+    sizing the context with json.dumps crashed every tool round in the first live benchmark run,
+    while these tests, built on dicts, all passed.
+    """
+    from ollama import Message
+
+    call = Message.ToolCall(function=Message.ToolCall.Function(name="shout", arguments={"word": "hi"}))
+    llm = make_llm([[{"message": {"content": "", "tool_calls": [call]}}], [text("It says HI.")]], tools=[shout])
+    assert "".join(llm.stream("shout hi")) == "It says HI."
+    assert llm.last_tool_calls == ["shout"]

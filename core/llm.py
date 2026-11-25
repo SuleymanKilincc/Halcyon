@@ -78,6 +78,8 @@ HALCYON_PERSONA = (
     "tool for it in this reply and its result confirms it; do not offer to 'try'.\n"
     "When you use a tool, answer only from what it returned. If the result does not "
     "contain the answer, say so instead of filling the gap from memory.\n"
+    "Your own knowledge stops at a date in the past: for the latest version or release of "
+    "something, news, prices or anything else that changes, search the web before answering.\n"
     "No backticks, code or commands in your replies: they cannot be spoken. "
     "Name files in words, without the extension and without quotes: 'the hello file', "
     "'the meeting notes'. That is only for what you say: in tool calls always use the exact "
@@ -113,16 +115,23 @@ SHORTENED_TOOL_CHARS = 600
 # One-round instructions, appended to the system prompt for that round only.
 FINAL_ROUND_NOTE = ("You have used all the tool calls for this request. Answer now from what the tools "
                     "returned; if something is still missing, say what you could not find.")
-ACT_NOW_NOTE = ("You said you would do something but did not call a tool. Call the tool now instead "
-                "of saying it again.")
+ACT_NOW_NOTE = ("You said you would do something, or asked whether to, but did not call a tool. Reading, "
+                "listing and searching never need permission. Call the tool now instead of saying it again.")
 
+_TOOL_VERB = r"(?:check|look|see|read|open|search|find|list|try|take a look|have a look|go through|verify)"
 _ANNOUNCES = re.compile(
-    r"\b(?:let me (?:check|look|see|read|open|search|find|list|try|take a look|have a look|go through|verify)"
-    r"|i(?:'ll| will) (?:check|look|read|open|search|find|list|have a look|take a look|go through|verify)"
-    r"|i(?:'m| am) going to (?:check|look|read|open|search|find|list)"
+    # Saying it will act, in English ...
+    rf"\b(?:let me {_TOOL_VERB}|i(?:'ll| will) {_TOOL_VERB}|i(?:'m| am) going to {_TOOL_VERB}"
     r"|checking (?:now|that|it)|one moment|just a (?:moment|second|sec))\b"
-    r"|bakayım|bakıyorum|okuyayım|okuyorum|açayım|açıyorum|kontrol edeyim|kontrol ediyorum|arayayım"
-    r"|arıyorum|inceleyeyim|inceliyorum|listeleyeyim|listeliyorum|bir saniye|bir dakika|bekleyin",
+    # ... or asking leave to do what never needs it: reading, listing and searching change nothing.
+    rf"|\b(?:would you like me to|do you want me to|shall i|should i|may i|can i) {_TOOL_VERB}\b"
+    # ... and in Turkish: now, about to, or future ("bulacağım", measured on the 9B model).
+    r"|bakayım|bakıyorum|bakacağım|okuyayım|okuyorum|okuyacağım|açayım|açıyorum|açacağım"
+    r"|kontrol edeyim|kontrol ediyorum|kontrol edeceğim|arayayım|arıyorum|arayacağım|bulacağım"
+    r"|inceleyeyim|inceliyorum|inceleyeceğim|listeleyeyim|listeliyorum|listeleyeceğim|göz atayım"
+    r"|göz atacağım|bir saniye|bir dakika|bekleyin"
+    r"|(?:okumamı|bakmamı|listelememi|aramamı|açmamı|incelememi|kontrol etmemi) ister misiniz"
+    r"|izin verin|izin verirseniz|izniniz olursa",
     re.IGNORECASE)
 
 
@@ -480,7 +489,9 @@ class SpeechLLM:
         budget = self._context_budget_chars(system, use_tools)
 
         def size(items: list[dict[str, Any]]) -> int:
-            return sum(len(str(m.get("content") or "")) + len(json.dumps(m.get("tool_calls") or "")) + 16
+            # str(), not json.dumps(): the real client returns ToolCall objects, which json cannot
+            # serialise (every tool round crashed on it; the dicts in the unit tests hid it).
+            return sum(len(str(m.get("content") or "")) + len(str(m.get("tool_calls") or "")) + 16
                        for m in items)
 
         if size(messages) <= budget:
