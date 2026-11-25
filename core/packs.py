@@ -77,15 +77,25 @@ _SLACK_TOTAL_GB = 1.5
 _SLACK_FLOOR_GB = 0.5
 
 
+def usable_vram_gb(hardware: Hardware) -> float:
+    """
+    The card memory Halcyon can actually use: what is free at start-up (memory an idle Ollama
+    model holds counts as free, see core/hardware.py), or the total when that cannot be read.
+    A card that other programs fill is not an 8 GB card for this purpose.
+    """
+    return hardware.vram_free_gb if hardware.vram_free_gb is not None else hardware.vram_gb
+
+
 def fits(pack: Pack, hardware: Hardware | None) -> bool:
     """Does the machine meet the pack's requirements? No GPU: no pack (CPU-only is far too slow)."""
     if hardware is None:           # unknown machine: assume the one this was measured on
         return True
     if not hardware.cuda:
         return False
-    return (hardware.vram_gb >= pack.min_vram_gb - _SLACK_FLOOR_GB
+    vram = usable_vram_gb(hardware)
+    return (vram >= pack.min_vram_gb - _SLACK_FLOOR_GB
             and hardware.ram_gb >= pack.min_ram_gb - _SLACK_FLOOR_GB
-            and hardware.vram_gb + hardware.ram_gb >= pack.min_total_gb - _SLACK_TOTAL_GB)
+            and vram + hardware.ram_gb >= pack.min_total_gb - _SLACK_TOTAL_GB)
 
 
 def candidates(hardware: Hardware | None) -> list[Pack]:
