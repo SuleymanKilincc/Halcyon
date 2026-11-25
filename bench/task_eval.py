@@ -263,24 +263,37 @@ class Task:
     note: str = field(default="", compare=False)
 
 
+# Ways of saying "it is not there". The first judge knew too few: it failed "cannot be found" and
+# "I was unable to find the file", which are right.
 NOT_FOUND = ("not found", "does not exist", "doesn't exist", "couldn't find", "could not find", "no such",
-             "isn't there", "is not there", "bulunamadı", "bulamadım", "yok", "mevcut değil")
+             "isn't there", "is not there", "cannot be found", "can't be found", "could not be found",
+             "couldn't be found", "unable to find", "can't find", "cannot find", "bulunamadı", "bulamadım",
+             "bulunamıyor", "bulunmuyor", "yok", "mevcut değil")
+
+# A number may be written as digits or, as the spoken persona asks, in words; the first judge
+# knew only digits and failed "forty-five seconds", which is right.
+N8080 = ("8080", "eight thousand eighty", "eighty eighty", "sekiz bin seksen")
+N45 = ("45", "forty-five", "forty five", "kırk beş")
+N48 = ("48", "forty-eight", "forty eight", "kırk sekiz")
+N7 = ("7", "seven", "yedi")
+N3 = ("3", "three", "üç")
+V34 = ("3.4", "three point four", "üç nokta dört")
 
 # Any of the file tools is a fair way to answer a file task; which one is the model's choice.
 FILE_TOOLS = ("list_directory", "read_file", "search_files")
 
 TASKS: tuple[Task, ...] = (
     Task("readme_port", "tr", "{root} klasöründeki README dosyasına göre sunucu varsayılan olarak hangi portta çalışıyor?",
-         must=(("8080",),), tools=FILE_TOOLS, what="read one named file (Turkish)"),
+         must=(N8080,), tools=FILE_TOOLS, what="read one named file (Turkish)"),
     Task("yaml_value", "en", "In {root}/config/app.yaml, what is the network timeout?",
-         must=(("45",),), forbid=("30 seconds",), tools=FILE_TOOLS, what="read a config value"),
+         must=(N45,), forbid=("30 seconds", "thirty seconds"), tools=FILE_TOOLS, what="read a config value"),
     Task("find_def", "en", "In the project at {root}, which file defines the function parse_config?",
          must=(("settings",),), tools=FILE_TOOLS, what="find a definition by exploring"),
     Task("deep_constant", "en", "In the project at {root}, where is the maximum number of retries set, and what is it?",
-         must=(("7", "seven"), ("client",)), tools=FILE_TOOLS,
+         must=(N7, ("client",)), tools=FILE_TOOLS,
          what="find a value four folders down (more steps than the tool loop allows?)"),
     Task("count_tests", "en", "How many test files are in {root}/tests?",
-         must=(("3", "three"),), tools=FILE_TOOLS, what="list a folder"),
+         must=(N3,), tools=FILE_TOOLS, what="list a folder"),
     Task("bug", "en", "There is a bug in {root}/src/calc.py. What is it?",
          must=(("first", "index 0", "skip", "range(1", "zero"),), tools=FILE_TOOLS,
          what="spot a bug in a short file"),
@@ -291,14 +304,15 @@ TASKS: tuple[Task, ...] = (
          must=(("quota", "disk"),), forbid=("malformed",), tools=FILE_TOOLS,
          what="the end of a 3000-line file (past the 4000-character cap)"),
     Task("pdf", "en", "What is the maximum input voltage in the specification at {root}/docs/spec.pdf?",
-         must=(("48",),), tools=FILE_TOOLS, what="a PDF"),
+         must=(N48,), tools=FILE_TOOLS, what="a PDF"),
     Task("docx", "tr", "{root}/docs/meeting.docx dosyasına göre toplantı hangi gün?",
          must=(("perşembe", "thursday"),), tools=FILE_TOOLS, what="a Word document (Turkish)"),
     Task("missing", "en", "What is in {root}/src/database.py?",
          must=(NOT_FOUND,), forbid=("def ", "class ", "connect"), tools=FILE_TOOLS,
          what="a file that does not exist: say so, do not invent it"),
     Task("research", "en", "What is the latest release of the Zephyrine Python library, and when did it come out? Say where you found it.",
-         must=(("3.4",), ("2026", "september")), forbid=("latest release is 3.2", "latest version is 3.2"),
+         must=(V34, ("2026", "september", "two thousand twenty-six")),
+         forbid=("latest release is 3.2", "latest version is 3.2"),
          tools=("search_web",), what="research: the answer is on the page, not in the snippets"),
     Task("find_def_tr", "tr", "{root} projesinde parse_config fonksiyonu hangi dosyada tanımlı?",
          must=(("settings",),), tools=FILE_TOOLS, what="find a definition, asked in Turkish"),
@@ -306,7 +320,8 @@ TASKS: tuple[Task, ...] = (
          must=(("quota", "disk", "kota"),), forbid=("malformed",), tools=FILE_TOOLS,
          what="the end of the long log, asked in Turkish"),
     Task("research_tr", "tr", "Zephyrine Python kütüphanesinin en son sürümü hangisi?",
-         must=(("3.4",),), tools=("search_web",), what="the same research, in Turkish"),
+         must=(V34,), forbid=("en son sürümü 3.2", "en son sürümü **3.2"), tools=("search_web",),
+         what="the same research, in Turkish"),
 )
 
 
@@ -403,7 +418,7 @@ def run(model: str | None, deep: bool, only: set[str] | None, seed: int = 7,
             problems = judge(task, reply, calls)
             results.append((task, problems))
             verdict = "PASS" if not problems else "FAIL"
-            flat = re.sub(r"\s+", " ", reply)[:500]
+            flat = re.sub(r"\s+", " ", reply)[:3000]
             used = " -> ".join(calls) or "none"
             print(f"\n[{verdict}] {task.id} - {task.what}  ({seconds:.1f} s, {rounds[0]} rounds)\n  tools: {used}\n  reply: {flat}"
                   + (f"\n  problems: {'; '.join(problems)}" if problems else ""), flush=True)
@@ -421,9 +436,14 @@ def main() -> int:
     parser.add_argument("--only", default="", help="comma-separated task ids")
     parser.add_argument("--seeds", default="7", help="comma-separated seeds; one full run per seed")
     parser.add_argument("--spoken", action="store_true", help="give each turn the rounds a spoken turn gets")
+    parser.add_argument("--rescore", default=None, metavar="LOG",
+                        help="judge the replies in a saved log again with the current rules; nothing is run")
     args = parser.parse_args()
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if args.rescore:
+        rescore(Path(args.rescore))
+        return 0
     only = {x.strip() for x in args.only.split(",") if x.strip()} or None
     seeds = [int(x) for x in args.seeds.split(",") if x.strip()]
     tally: dict[str, list[bool]] = {}
@@ -441,6 +461,42 @@ def main() -> int:
         print(f"  {task.id:14s} {sum(wins)}/{len(wins)}  {task.what}")
     _unload(args.deep or args.model)
     return 0
+
+
+def rescore(log: Path) -> None:
+    """
+    Judge the replies of a saved run again with the current rules, so two runs made at different
+    times can be compared under one judge. Replies logged before full replies were kept are cut
+    at 500 characters; the facts asked for came well before that in every reply read by hand.
+    """
+    tasks = {task.id: task for task in TASKS}
+    lines = log.read_text(encoding="utf-8", errors="replace").splitlines()
+    tally: dict[str, list[bool]] = {}
+    per_seed: dict[str, list[bool]] = {}
+    model, seed = "?", "?"
+    for i, line in enumerate(lines):
+        header = re.match(r"^#{10} (\S+) .*seed (\d+)\)", line)
+        if header:
+            model, seed = header.group(1), header.group(2)
+            continue
+        result = re.match(r"^\[(?:PASS|FAIL)\] (\S+) - ", line)
+        if not result or result.group(1) not in tasks or i + 2 >= len(lines):
+            continue
+        used = lines[i + 1].split("tools:", 1)[-1].strip()
+        calls = [] if used == "none" else [c.strip() for c in used.split(" -> ")]
+        reply = lines[i + 2].split("reply:", 1)[-1].strip()
+        passed = not judge(tasks[result.group(1)], reply, calls)
+        tally.setdefault(result.group(1), []).append(passed)
+        per_seed.setdefault(seed, []).append(passed)
+    print(f"{log.name}: {model}, rescored with the current rules")
+    for seed_name, results in per_seed.items():
+        print(f"  seed {seed_name}: {sum(results)}/{len(results)}")
+    total = sum(sum(v) for v in tally.values())
+    print(f"  all: {total}/{sum(len(v) for v in tally.values())} task runs passed")
+    for task in TASKS:
+        if task.id in tally:
+            wins = tally[task.id]
+            print(f"  {task.id:14s} {sum(wins)}/{len(wins)}  {task.what}")
 
 
 def _unload(model: str | None) -> None:
