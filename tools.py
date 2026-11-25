@@ -12,7 +12,6 @@ from typing import Optional, List
 import requests
 from bs4 import BeautifulSoup
 from langchain.tools import tool
-from langchain_community.tools import DuckDuckGoSearchRun
 import zipfile
 import tarfile
 import py7zr
@@ -140,46 +139,26 @@ def execute_terminal_command(command: str) -> str:
 # ============================================================================
 
 @tool
-def read_file(file_path: str) -> str:
+def read_file(file_path: str, start_line: int = 1, end_line: int = 0) -> str:
     """
-    Read the contents of a file.
-    
-    Use this tool to read file contents. Supports text files up to 10MB.
-    
+    Read a file: text, code, a log, a PDF or a Word document. A long file comes back one part at a time with line numbers: pass start_line to read another part, or start_line=-50 for its last 50 lines (the end of a log). To find something in a long file, use search_files instead of reading all of it.
+
     Args:
-        file_path: Path to the file (relative to workspace or absolute)
-        
+        file_path: Path to the file (absolute, or relative to the workspace)
+        start_line: First line to show; a negative number counts from the end
+        end_line: Last line to show; 0 shows as much as fits
+
     Returns:
-        File contents or error message
-        
-    Example:
-        read_file("example.txt")
-        read_file("code/main.py")
+        The lines with their numbers, or a message saying what is wrong
     """
+    from core import files
+
     try:
-        path = Path(file_path)
-        
-        # Convert to absolute path if relative
-        if not path.is_absolute():
-            path = config.get_workspace_path(file_path)
-        
-        # Check if file exists
-        if not path.exists():
-            return f"❌ File not found: {file_path}"
-        
-        if not path.is_file():
-            return f"❌ Path is not a file: {file_path}"
-        
-        # Check file size
-        if path.stat().st_size > config.MAX_FILE_READ_SIZE:
-            return f"❌ File too large (max {config.MAX_FILE_READ_SIZE / (1024*1024)}MB)"
-        
-        # Read file
-        with open(path, 'r', encoding='utf-8', errors='ignore') as f:
-            content = f.read()
-        
-        return content
-        
+        path, note = files.resolve(file_path, config.get_workspace_path(), want="file")
+        if path is None:
+            return f"❌ {note}"
+        text = files.read_window(path, int(start_line or 1), int(end_line or 0))
+        return f"{note}\n{text}" if note else text
     except Exception as e:
         return f"❌ Error reading file: {str(e)}"
 
@@ -277,55 +256,51 @@ def append_to_file(file_path: str, content: str) -> str:
         return f"❌ Error appending to file: {str(e)}"
 
 @tool
-def list_directory(directory_path: str = ".") -> str:
+def list_directory(directory_path: str = ".", depth: int = 1) -> str:
     """
-    List contents of a directory.
-    
-    Use this tool to explore directory structure and find files.
-    
+    List what is inside a folder, with file sizes. depth=2 or 3 also shows what is inside the subfolders, the quickest way to see how a whole project is laid out.
+
     Args:
-        directory_path: Path to directory (relative to workspace or absolute)
-        
+        directory_path: Path to the folder (absolute, or relative to the workspace)
+        depth: How many levels to show, 1 to 4
+
     Returns:
-        Formatted list of files and directories
-        
-    Example:
-        list_directory(".")
-        list_directory("src")
+        The folder's contents, folders first
     """
+    from core import files
+
     try:
-        path = Path(directory_path)
-        
-        # Convert to absolute path if relative
-        if not path.is_absolute():
-            path = config.get_workspace_path(directory_path)
-        
-        # Check if directory exists
-        if not path.exists():
-            return f"❌ Directory not found: {directory_path}"
-        
-        if not path.is_dir():
-            return f"❌ Path is not a directory: {directory_path}"
-        
-        # List contents
-        items = sorted(path.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower()))
-        
-        if not items:
-            return f"📁 {path}\n(empty directory)"
-        
-        output = [f"📁 {path}\n"]
-        for item in items:
-            if item.is_dir():
-                output.append(f"  📂 {item.name}/")
-            else:
-                size = item.stat().st_size
-                size_str = f"{size:,} bytes" if size < 1024 else f"{size/1024:.1f} KB"
-                output.append(f"  📄 {item.name} ({size_str})")
-        
-        return "\n".join(output)
-        
+        path, note = files.resolve(directory_path, config.get_workspace_path(), want="dir")
+        if path is None:
+            return f"❌ {note}"
+        text = files.listing(path, int(depth or 1))
+        return f"{note}\n{text}" if note else text
     except Exception as e:
         return f"❌ Error listing directory: {str(e)}"
+
+
+@tool
+def search_files(text: str, path: str) -> str:
+    """
+    Find the lines that contain some text in a file, or in every file under a folder (PDF and Word files too; case does not matter). Use it to find where something is defined or mentioned, or the errors in a log, instead of opening files one by one.
+
+    Args:
+        text: The word, name or phrase to look for
+        path: A file or a folder (absolute, or relative to the workspace)
+
+    Returns:
+        Matching lines as file:line: text, or the closest lines when nothing matches exactly
+    """
+    from core import files
+
+    try:
+        target, note = files.resolve(path, config.get_workspace_path())
+        if target is None:
+            return f"❌ {note}"
+        result = files.search(text, target)
+        return f"{note}\n{result}" if note else result
+    except Exception as e:
+        return f"❌ Error searching: {str(e)}"
 
 @tool
 def delete_file(file_path: str) -> str:
@@ -376,79 +351,78 @@ def delete_file(file_path: str) -> str:
 @tool
 def search_web(query: str) -> str:
     """
-    Search the web using DuckDuckGo.
-    
-    Use this tool to find information on the internet. Returns top search results.
-    
+    Search the web. Returns titles, links and short snippets; snippets can be out of date, so open the most relevant link with fetch_webpage before you answer, and name the site you used.
+
     Args:
         query: Search query string
-        
+
     Returns:
-        Search results with titles and snippets
-        
-    Example:
-        search_web("Python async programming tutorial")
-        search_web("latest news AI")
+        Numbered results with title, link and snippet
     """
+    from core.web import format_search_results
+
     try:
-        search = DuckDuckGoSearchRun()
-        results = search.run(query)
-        return results
-        
+        results = _web_search(query)
     except Exception as e:
         return f"❌ Search error: {str(e)}"
+    return format_search_results(query, results)
+
+
+def _web_search(query: str) -> list:
+    """
+    Title, link and snippet of the top results (DuckDuckGo; no API key).
+
+    The search sometimes comes back empty for a query that works a moment later, so the
+    other backends are tried before saying there is nothing. (The LangChain wrapper used
+    before needs a package that is not installed here, so search had been failing.)
+    """
+    import warnings
+
+    try:
+        from ddgs import DDGS
+    except ImportError:
+        from duckduckgo_search import DDGS
+    last_error = None
+    for backend in ("auto", "html", "lite"):
+        # record=True: the package announces its own rename on every call and resets the
+        # warning filters to do it, so ignoring is not enough; recording swallows it.
+        with warnings.catch_warnings(record=True):
+            try:
+                results = DDGS().text(query, max_results=config.SEARCH_MAX_RESULTS, backend=backend)
+            except Exception as error:  # noqa: BLE001 - try the next backend
+                last_error = error
+                continue
+        if results:
+            return list(results)
+    if last_error is not None:
+        raise last_error
+    return []
+
 
 @tool
-def fetch_webpage(url: str) -> str:
+def fetch_webpage(url: str, find: str = "") -> str:
     """
-    Fetch and parse content from a webpage.
-    
-    Use this tool to extract text content from websites. Returns cleaned text
-    without HTML tags.
-    
+    Read a web page as text. Pass find='a word' to get only the parts of a long page that mention it, which is how to reach something far down a page.
+
     Args:
         url: URL of the webpage to fetch
-        
+        find: Optional word or phrase; only the parts of the page that mention it are returned
+
     Returns:
-        Webpage text content or error message
-        
-    Example:
-        fetch_webpage("https://python.org")
-        fetch_webpage("https://example.com/article")
+        The page's text (the start of it, or the parts that mention `find`)
     """
+    from core.web import page_view
+
     try:
-        # Validate URL
         if not url.startswith(('http://', 'https://')):
             return "❌ Invalid URL: must start with http:// or https://"
-        
-        # Fetch webpage
-        response = requests.get(
-            url,
-            headers=config.REQUEST_HEADERS,
-            timeout=config.REQUEST_TIMEOUT
-        )
+        response = requests.get(url, headers=config.REQUEST_HEADERS, timeout=config.REQUEST_TIMEOUT)
         response.raise_for_status()
-        
-        # Parse HTML
         soup = BeautifulSoup(response.content, 'lxml')
-        
-        # Remove script and style elements
         for element in soup(['script', 'style', 'nav', 'footer', 'header']):
             element.decompose()
-        
-        # Get text
         text = soup.get_text(separator='\n', strip=True)
-        
-        # Clean up whitespace
-        lines = [line.strip() for line in text.split('\n') if line.strip()]
-        content = '\n'.join(lines)
-        
-        # Truncate if too long
-        if len(content) > config.MAX_OUTPUT_LENGTH:
-            content = content[:config.MAX_OUTPUT_LENGTH] + "\n... (content truncated)"
-        
-        return f"📄 Content from {url}:\n\n{content}"
-        
+        return page_view(url, text, find or "")
     except requests.Timeout:
         return f"❌ Timeout: Could not fetch webpage within {config.REQUEST_TIMEOUT} seconds"
     except requests.RequestException as e:
@@ -905,6 +879,7 @@ def get_all_tools() -> List:
         write_file,
         append_to_file,
         list_directory,
+        search_files,
         delete_file,
         
         # Web

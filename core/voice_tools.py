@@ -26,6 +26,7 @@ from typing import Any
 VOICE_SAFE_TOOLS = (
     "list_directory",
     "read_file",
+    "search_files",
     "get_system_stats",
     "search_web",
     "fetch_webpage",
@@ -48,7 +49,8 @@ VOICE_GATED_TOOLS = (
 # so the description cannot drift from the truth when a tool is switched on.
 ABILITY = {
     "list_directory": "list what is inside a folder",
-    "read_file": "read a text file",
+    "read_file": "read files, including PDF and Word documents",
+    "search_files": "search inside files and folders",
     "get_system_stats": "report hardware statistics such as temperatures, load, memory and battery",
     "search_web": "search the web",
     "fetch_webpage": "read a web page",
