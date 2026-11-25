@@ -16,7 +16,7 @@ Three harnesses, all in `bench/`, all talking to Ollama's HTTP API directly so t
 
 | Harness | What it measures | How it decides |
 |---|---|---|
-| `python -m bench.code_eval --set easy` / `--set hard` | Whether a model writes working Python (8 tasks per set: parsing, graphs, caching, a repair task, a transaction store ...) | The code block of the reply is run against hidden asserts in a fresh, isolated interpreter. Pass or fail, no judgement involved. |
+| `python -m bench.code_eval --set easy` / `--set hard` | Whether a model writes working Python (8 tasks per set: parsing, graphs, caching, a repair task, a transaction store ...) | The code block of the reply is run against hidden asserts in a separate interpreter. Pass or fail, no judgement involved. Not a sandbox: the code runs with the user's rights, so run it in a VM or container if that matters. |
 | `python -m bench.world_session --language en` / `tr` | Facts about films, games and books; a five-turn world with three characters whose traits must not change | A person reads the replies against a written list of rules (`RULES` in the script). Not automated, because keyword rules for "stayed consistent" would be a guess. |
 | `python -m voice.cli --info` | Which pack a machine gets | The rules in `core/packs.py`, covered by `tests/test_packs.py` |
 
