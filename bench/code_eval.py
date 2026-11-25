@@ -7,8 +7,14 @@ Can a model write correct code? Used to choose the models behind deep mode (docs
     python -m bench.code_eval --check                             # test the tests (no model needed)
 
 Each task asks for one Python function or class. The code block of the reply is run
-against hidden asserts in a separate interpreter (isolated mode, a temporary directory,
-10 s limit) and counts as passed only if every assert holds. Reports pass/fail per task,
+against hidden asserts in a separate interpreter (Python's isolated mode, a temporary
+directory, a 10 s limit) and counts as passed only if every assert holds.
+
+**This is not a sandbox.** The model's code runs with your user's rights: it could read or
+change your files, reach the network or start programs. The models measured here were asked
+for small pure functions and nothing hostile came back, but nothing stops it either. Run
+model evaluations in a virtual machine or a container if that matters to you. `--check`
+runs only the reference solutions shipped in this repository. Reports pass/fail per task,
 generation speed and the placement Ollama chose (how much of the model sits on the GPU).
 
 What keeps the comparison fair, and what it cannot tell you:
@@ -162,6 +168,7 @@ def main() -> int:
     if not args.models:
         parser.error("name at least one model, or use --check")
     tasks = load_tasks(args.task_set)
+    print("Model-written code will run with your user's rights (not a sandbox; see the module docstring).")
     for model in args.models:
         evaluate(model, tasks, max_tokens=args.max_tokens, think=args.think)
     return 0

@@ -88,3 +88,10 @@ def test_the_description_marks_the_recommendation_and_what_is_installed():
     assert "of VRAM + RAM together" in text
     assert "[measured, installed]" in text and "[measured, not installed]" in text
     assert "No pack fits" in describe(TINY, set())
+
+
+def test_a_card_that_other_programs_fill_is_judged_by_what_is_free():
+    busy = Hardware(cuda=True, vram_gb=8.0, vram_free_gb=2.0, ram_gb=32.0)
+    assert choose_pack(busy) is None                         # 2 GB free is below every floor
+    quiet = Hardware(cuda=True, vram_gb=8.0, vram_free_gb=6.8, ram_gb=31.6)
+    assert choose_pack(quiet).key == "standard"              # the development machine with a music player open

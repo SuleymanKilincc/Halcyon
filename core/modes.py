@@ -218,7 +218,7 @@ def _matches(pattern: re.Pattern[str], variants: tuple[str, ...]) -> bool:
 # --- code ---------------------------------------------------------------------
 
 _CODE_WORDS = _re(r"""
-    \b(?: kod\w{0,7} | fonksiyon\w* | değişken\w* | döngü\w* | algoritma\w* | derle\w* | debug\w*
+    \b(?: kod(?:la\w* | \w{0,7}) | fonksiyon\w* | değişken\w* | döngü\w* | algoritma\w* | derle\w* | debug\w*
         | bug | exception\w* | traceback | stack\ ?trace | compil\w* | refactor\w* | snippet\w*
         | kütüphane\w* | librar(?:y|ies) | framework\w* | endpoint\w* | veritabanı\w* | database\w*
         | sorgu\w* | unit\ test\w* | test\ yaz\w* | function\w* | method\w* | class | classes
@@ -457,6 +457,44 @@ def _read_answer(folded: str) -> str | None:
     return None
 
 
+# A sentence that refuses something. "I don't want to switch to deep mode" names the mode and
+# a switch, and must never be read as asking for it; "No, just do it here" answers an offer.
+_NEGATION = _re(r"""
+    \b(?: don't | dont | do\ not | doesn't | not | never | no | without | istemiyorum | istemem
+        | istemiyoruz | hayır | gerek\ yok | olmasın | kalsın )\b
+    | \b(?: geç | dön | aç | başlat | kullan )(?: me | ma | meyelim | mayalım | meyin | mayın | mesin | masın )\b
+""")
+_SWITCH_WORD = _re(r"\b(?: switch\w* | change | mod\w* | mode | geç\w* | dön\w* | model\w* )\b")
+_NO_LEAD = frozenset({"no", "nope", "nah", "hayır", "yok", "istemiyorum", "olmaz", "kalsın"})
+
+
+def _normalise(text: str) -> str:
+    return text.replace("\u2019", "'")
+
+
+def refused_mode(text: str) -> str | None:
+    """A mode the user refuses by name ("I don't want deep mode", "derin moda geçme"), or None."""
+    variants = _variants(_normalise(text))
+    if not _matches(_NEGATION, variants):
+        return None
+    return next((key for key, phrase in _MODE_PHRASES.items() if _matches(_re(phrase), variants)), None)
+
+
+def is_refusal(text: str) -> bool:
+    """
+    Does this turn decline an offer? A plain "no", a sentence that starts with one ("No, just
+    do it here", "Hayır, burada devam et"), or one that refuses a switch or a mode by name.
+    """
+    if parse_confirmation(text) == "no":
+        return True
+    variants = _variants(_normalise(text))
+    for variant in variants:
+        words = _WORD.findall(variant)
+        if words and (words[0] in _NO_LEAD or " ".join(words[:2]) in _NO_PHRASES):
+            return True
+    return refused_mode(text) is not None or (_matches(_NEGATION, variants) and _matches(_SWITCH_WORD, variants))
+
+
 _MODE_PHRASES = {
     # Deep mode answers to its own name and to the older names of the work it does.
     "deep": (r"(?: derin\ mod\w* | deep\ mode | kod(?:lama)?\ mod\w* | code\ mode | senaryo\ mod\w* "
@@ -469,9 +507,15 @@ _ACTIVATE = (r"(?: geç\w* | aç\w* | etkinleştir\w* | başlat\w* | dön\w* | s
 
 
 def explicit_mode(text: str) -> str | None:
-    """A mode the user asked for by name ("switch to code mode", "genel moda dön"), or None."""
+    """
+    A mode the user asked for by name ("switch to code mode", "genel moda dön"), or None.
+
+    A refusal that names a mode ("I don't want to switch to deep mode", "derin moda geçme")
+    is not a request for it: that would switch, without asking, exactly when the user said no.
+    """
+    text = _normalise(text)
     variants = _variants(text)
-    if len(text.split()) > 12:
+    if len(text.split()) > 12 or _matches(_NEGATION, variants):
         return None
     for key, phrase in _MODE_PHRASES.items():
         pattern = _re(rf"{phrase}[^.?!]{{0,30}}\b{_ACTIVATE}\b|\b{_ACTIVATE}\b[^.?!]{{0,30}}{phrase}")

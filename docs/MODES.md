@@ -22,14 +22,14 @@ The classifier (`core/modes.py: classify`) is rule-based on purpose. It runs on 
 
 The user hears about **modes**, not models. There is one heavy mode:
 
-- **Deep mode** takes the work where a larger model measurably answered better: big coding jobs and long stories or role-play (and questions about films, games and books, where the small model invented facts). The assistant asks first, names the wait and the reason, and waits for a yes:
+- **Deep mode** takes the work where a larger model measurably answered better: big coding jobs and long stories or role-play. Questions about films, games and books are also answered better there (the small model invented facts), but a question on its own never makes the assistant offer a switch: it is a lookup, tier 0, and in deep mode it counts as off-topic. Ask for deep mode by name when you want it for those. The assistant asks first, names the wait and the reason, and waits for a yes:
 
   > "This looks like a longer story to build, and deep mode suits it better. Switching takes about 30 to 120 seconds, because I have to unload the current model and load the deep one. Shall we switch?"
 
   *Yes* → announces, switches, then answers the request that was waiting. *No* → answers where it is, and stays quiet about that mode for six turns. Anything else is treated as a new request and the question lapses.
 - **Research mode** only changes the prompt. Nothing to load, so nothing to ask; it says "Switching to research mode." and goes.
 
-You can also ask by name at any time: *"switch to deep mode"* (also *"kod moduna geç"*, *"senaryo moduna geç"*, *"genel moda dön"*). The wait is still announced; there is nothing to confirm because you asked.
+You can also ask by name at any time: *"switch to deep mode"* (also *"kod moduna geç"*, *"senaryo moduna geç"*, *"genel moda dön"*). The wait is still announced; there is nothing to confirm because you asked. A sentence that *refuses* a mode by name (*"I don't want deep mode"*, *"derin moda geçme"*) is never read as asking for it, and that mode is not offered for a while; a refusal worded in a sentence (*"No, just do it here"*, *"Hayır, burada devam et"*) answers an offer like a plain no.
 
 After three turns that have nothing to do with the mode you are in, it offers to go back. The first switch is timed, and the next offer quotes the measured time instead of the estimate.
 

@@ -214,6 +214,9 @@ def main() -> int:
                                                     installed=installed)
         # The plan was chosen from measured sizes; confirm the card agrees.
         profile = fit_to_gpu(llm, profile, installed)
+        if controller is not None:
+            # A step-down changed the model: general mode must not load the one that spilled.
+            controller.rebase()
         # A step down may also have changed the speech model; Whisper is
         # loaded only after this point, so the settings can still follow.
         settings = apply_to_voice_settings(profile, settings, hardware)

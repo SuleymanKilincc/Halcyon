@@ -46,7 +46,9 @@ from core.modes import (
     classify,
     default_modes,
     explicit_mode,
+    is_refusal,
     parse_confirmation,
+    refused_mode,
     say,
     seconds_phrase,
 )
@@ -78,6 +80,7 @@ class ModeController:
     MOMENTUM_TURNS = 3     # tier 1 turns in a row in one category count as a tier 2 session
     OFF_TOPIC_TURNS = 3    # turns away from the current mode before offering to leave it
     COOLDOWN_TURNS = 6     # turns a declined mode stays quiet
+    REFUSAL_WORDS = 8      # a refusal longer than this carries a new request of its own
 
     def __init__(
         self,
@@ -110,6 +113,17 @@ class ModeController:
         self._load_seconds: dict[str, float] = {}   # measured, per model name
         self._state = _State(llm.profile, llm.base_system, True, True)
 
+    def rebase(self) -> None:
+        """
+        Take the model the client runs now as general mode's model.
+
+        Call it after core.fit.fit_to_gpu: when the startup check steps down to a smaller model
+        because the planned one spilled onto the CPU, general mode, research mode and a rollback
+        must use the smaller one, not load the model that did not fit again.
+        """
+        self.base_profile = self.llm.profile
+        self._state = _State(self.llm.profile, self.llm.base_system, True, True)
+
     # ------------------------------------------------------------------ status
 
     def status(self) -> str:
@@ -133,10 +147,20 @@ class ModeController:
             if answer == "yes":
                 yield from self._accept(pending, language)
                 return
-            if answer == "no":
-                yield from self._decline(pending, language)
+            if answer == "no" or is_refusal(text):
+                if answer is None and len(text.split()) > self.REFUSAL_WORDS:
+                    # "No, but write me a function that ..." declines and asks something new.
+                    yield from self._decline(pending, language, instead=text)
+                else:
+                    # "No, just do it here": the request that was waiting is answered here.
+                    yield from self._decline(pending, language)
                 return
             # Anything else is a new request; the question lapses without a word.
+
+        refused = refused_mode(text)
+        if refused is not None and refused in self.modes:
+            # "I don't want deep mode" outside an offer: answer it, and do not offer that mode soon.
+            self._declined_until[refused] = self.turn + self.COOLDOWN_TURNS
 
         named = explicit_mode(text)
         if named is not None and named in self.modes:
@@ -199,7 +223,10 @@ class ModeController:
         return names is None or mode.model in names   # unknown: try, and fail gracefully
 
     def _seconds(self, mode: Mode, language: str) -> str:
-        return seconds_phrase(language, mode.load_seconds, self._load_seconds.get(self._model_of(mode)))
+        # A mode with no model of its own runs on the general one, so loading it costs what that does
+        # (research mode from deep mode reloads the general model: not "0 to 0 seconds").
+        estimate = mode.load_seconds if mode.model else self.general.load_seconds
+        return seconds_phrase(language, estimate, self._load_seconds.get(self._model_of(mode)))
 
     # ----------------------------------------------------------------- dialogue
 
@@ -231,10 +258,10 @@ class ModeController:
         yield from self._enter(pending.mode, language)
         yield from self._answer(pending.prompt, language)
 
-    def _decline(self, pending: _Pending, language: str) -> Iterator[str]:
+    def _decline(self, pending: _Pending, language: str, instead: str | None = None) -> Iterator[str]:
         self._declined_until[pending.mode.key] = self.turn + self.COOLDOWN_TURNS
         yield say("declined", language, mode=self.current) + " "
-        yield from self._answer(pending.prompt, language)
+        yield from self._answer(instead or pending.prompt, language)
 
     def _explicit(self, target: Mode, language: str) -> Iterator[str]:
         self._declined_until.pop(target.key, None)
@@ -260,6 +287,8 @@ class ModeController:
 
         if self._apply(target):
             self.current = target
+            # What was said before the switch is not a reason to leave the new mode.
+            self._recent.clear()
             yield say("ready", language, mode=target) + " "
         else:
             yield say("failed", language, mode=target, current=self.current) + " "

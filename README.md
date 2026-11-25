@@ -141,7 +141,7 @@ pip install -r requirements-test.txt
 pytest
 ```
 
-329 tests, about six seconds, and **no microphone, GPU or Ollama server required**: the hardware and the model server are replaced by fakes, so what gets tested is the project's own logic — sentence splitting, profile selection, the VRAM planner (including what it would choose for cards from 4 to 32 GB), the spill-and-step-down loop, the end-of-speech state machine, the tool-calling loop and conversation memory, and the mode rules and switching conversation. They run on every push on Ubuntu and Windows via GitHub Actions.
+357 tests, about seven seconds, and **no microphone, GPU or Ollama server required**: the hardware and the model server are replaced by fakes, so what gets tested is the project's own logic — sentence splitting, profile selection, the VRAM planner (including what it would choose for cards from 4 to 32 GB), the spill-and-step-down loop, the end-of-speech state machine, the tool-calling loop and conversation memory, and the mode rules and switching conversation. They run on every push on Ubuntu and Windows via GitHub Actions.
 
 The tests were checked by deliberately breaking the code: a one-character change to a threshold, and reverting a past bug fix, each turned exactly the right test red.
 
