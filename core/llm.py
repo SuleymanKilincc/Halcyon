@@ -136,6 +136,7 @@ class SpeechLLM:
 
         self._prewarm_lock = threading.Lock()
         self._prewarming = False
+        self._prewarm_thread: threading.Thread | None = None
         self.last_tool_calls: list[str] = []
 
     # ------------------------------------------------------------- lifecycle
@@ -169,9 +170,22 @@ class SpeechLLM:
         self._tools_enabled = use_tools
         self._supports_thinking = supports_thinking
 
+    # How long a swap waits for a wake-up that was already running. A wake-up is one token,
+    # so this is only reached when the GPU itself is stuck; the swap then goes ahead.
+    PREWARM_WAIT_S = 30.0
+
     def begin_switch(self) -> None:
-        """A model swap is in progress: background wake-ups must not load the old model again."""
+        """
+        A model swap is in progress: background wake-ups must not load the old model again.
+
+        New wake-ups are refused from here on, and one that is already running is waited
+        for: it was sent for the old model, and if it reached Ollama after the unload it
+        would load the old model again next to the new one (two models do not fit in 8 GB).
+        """
         self._switching.set()
+        running = self._prewarm_thread
+        if running is not None and running.is_alive() and running is not threading.current_thread():
+            running.join(timeout=self.PREWARM_WAIT_S)
 
     def end_switch(self) -> None:
         self._switching.clear()
@@ -239,7 +253,9 @@ class SpeechLLM:
                 with self._prewarm_lock:
                     self._prewarming = False
 
-        threading.Thread(target=run, name="halcyon-prewarm", daemon=True).start()
+        thread = threading.Thread(target=run, name="halcyon-prewarm", daemon=True)
+        self._prewarm_thread = thread
+        thread.start()
 
     # ---------------------------------------------------------------- stream
 
@@ -254,8 +270,9 @@ class SpeechLLM:
             "stream": True,
             "options": options,
         }
-        # A model that cannot think rejects the parameter instead of ignoring it.
-        if self._supports_thinking or self.profile.llm_reasoning:
+        # A model that cannot think rejects the parameter instead of ignoring it, even when
+        # the profile asks for reasoning: that model then simply answers without it.
+        if self._supports_thinking:
             payload["think"] = self.profile.llm_reasoning
         if use_tools and self._tool_specs and self._tools_enabled:
             payload["tools"] = self._tool_specs

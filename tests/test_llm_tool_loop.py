@@ -209,3 +209,36 @@ def test_no_background_wake_up_while_a_model_is_being_swapped():
     llm.prewarm()
     assert llm._prewarming is False
     llm.end_switch()
+
+
+def test_a_model_that_cannot_think_is_never_sent_think_even_when_the_profile_wants_reasoning():
+    from dataclasses import replace
+
+    reasoning = replace(PERFORMANCE, llm_reasoning=True)
+    llm = make_llm([[text("ok")]])
+    llm.apply_mode(reasoning, supports_thinking=False)
+    "".join(llm.stream("hello"))
+    assert "think" not in llm._client.requests[0]
+
+
+def test_a_swap_waits_for_a_wake_up_that_was_already_running():
+    """The wake-up was sent for the old model; it must be done before the old model is unloaded."""
+    import threading
+    import time
+
+    llm = make_llm([])
+    release, finished = threading.Event(), threading.Event()
+
+    def slow_wake_up(*args, **kwargs):
+        release.wait(5)
+        finished.set()
+        return iter([text(".")])
+
+    llm._raw_stream = slow_wake_up
+    llm.prewarm()
+    threading.Timer(0.2, release.set).start()
+    started = time.perf_counter()
+    llm.begin_switch()
+    assert finished.is_set(), "the swap went ahead while the wake-up was still in flight"
+    assert time.perf_counter() - started < 5
+    llm.end_switch()
