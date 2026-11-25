@@ -30,6 +30,8 @@ torch>=2.4.0
 
 # ---------------------------------------------------------------- web / tools
 duckduckgo-search>=8.0.0
+pypdf>=4.0          # read_file and search_files read PDFs as text
+python-docx>=1.1    # ... and Word documents
 beautifulsoup4>=4.12.0
 requests>=2.31.0
 lxml>=4.9.0
