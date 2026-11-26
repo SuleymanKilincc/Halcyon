@@ -15,7 +15,7 @@ Halcyon listens continuously, notices when you stop talking, transcribes your sp
 - **Barge-in** — talk over Halcyon and it stops speaking immediately.
 - **Turkish and English** — the language is detected per utterance, and each sentence of a reply is read by the voice of its own language.
 - **Does not answer noise** — room noise, breathing and keyboard clicks no longer come out as *"Thank you."*, and speech too garbled to understand is dropped instead of being acted on. Measured, see below.
-- **Tool calling** — lists directories, reads files, reports system temperatures, searches the web. Verified against real output, not just prompted to claim it.
+- **Tool calling** — reads files a part at a time with line numbers (the end of a long log, PDF and Word included), searches inside files and folders, shows a whole project in one listing, reports system temperatures, and searches the web with links it can open. Measured end to end through its own tool loop, before and after: [docs/TOOLS.md](docs/TOOLS.md).
 - **Conversation memory** — follow-up questions like *"how many were there?"* resolve against earlier turns.
 - **Knows its limits** — told exactly which actions are switched off and why, it declines them plainly and offers what it can do; it answers from tool results instead of filling gaps from memory. Measured before and after on 15 requests.
 - **Adapts to the GPU** — picks the largest models that fit the card's free memory, checks after loading that nothing spilled onto the CPU, and steps down on its own if it did. Lightweight CPU models when no GPU is available.
@@ -141,23 +141,23 @@ pip install -r requirements-test.txt
 pytest
 ```
 
-357 tests, about seven seconds, and **no microphone, GPU or Ollama server required**: the hardware and the model server are replaced by fakes, so what gets tested is the project's own logic — sentence splitting, profile selection, the VRAM planner (including what it would choose for cards from 4 to 32 GB), the spill-and-step-down loop, the end-of-speech state machine, the tool-calling loop and conversation memory, and the mode rules and switching conversation. They run on every push on Ubuntu and Windows via GitHub Actions.
+422 tests, about nine seconds, and **no microphone, GPU or Ollama server required**: the hardware and the model server are replaced by fakes, so what gets tested is the project's own logic — sentence splitting, profile selection, the VRAM planner (including what it would choose for cards from 4 to 32 GB), the spill-and-step-down loop, the end-of-speech state machine, the tool-calling loop and conversation memory, and the mode rules and switching conversation. They run on every push on Ubuntu and Windows via GitHub Actions.
 
 The tests were checked by deliberately breaking the code: a one-character change to a threshold, and reverting a past bug fix, each turned exactly the right test red.
 
 ## Project structure
 
 ```
-core/               hardware detection, VRAM planner, placement check, LLM client, voice tools, modes (rules + conversation), model packs
+core/               hardware detection, VRAM planner, placement check, LLM client, voice tools, modes (rules + conversation), model packs, file and web tool logic
 voice/              the speech pipeline: VAD, STT, TTS, audio I/O, turn state machine, CLI
-bench/              latency, recognition quality, honesty about capabilities, memory per model, code and world-keeping evaluations for the deep-mode models
+bench/              latency, recognition quality, honesty about capabilities, memory per model, code and world-keeping evaluations for the deep-mode models, technical tasks through the tool loop
 tests/              automated tests (pytest)
 scripts/manual/     interactive checks that need a human (audio, windows, keyboard input)
 tools.py            tool implementations (files, terminal, web, browser, archives, hardware)
 agent.py            text-mode agent with the full tool set (LangGraph)
 gui.py              desktop UI (still on the legacy voice pipeline)
 database.py         SQLite session storage
-docs/               VOICE.md (pipeline + measurements), MODES.md (deep / research modes, packs, measurements), MODEL_SELECTION.md (how the models were chosen, and what the evidence does not show), LICENSES.md, MEMORY.md (embedding model choice); archive/HISTORY.md (how the project got here)
+docs/               VOICE.md (pipeline + measurements), MODES.md (deep / research modes, packs, measurements), MODEL_SELECTION.md (how the models were chosen, and what the evidence does not show), TOOLS.md (the file and web tools, measured before and after), LICENSES.md, MEMORY.md (embedding model choice); archive/HISTORY.md (how the project got here)
 ```
 
 ## Limitations
