@@ -84,3 +84,10 @@ def test_with_no_known_folders_the_statement_still_works(tmp_path):
     from core.voice_tools import environment_statement
 
     assert "none found" in environment_statement(tmp_path)
+
+
+def test_the_environment_says_a_given_path_is_worth_trying():
+    """The Light model said a temporary folder was out of its reach, without trying (measured)."""
+    from core.voice_tools import environment_statement
+
+    assert "never say a path is out of reach without trying the tool" in environment_statement()

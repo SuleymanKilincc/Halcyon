@@ -282,7 +282,7 @@ def list_directory(directory_path: str = ".", depth: int = 1) -> str:
 @tool
 def search_files(text: str, path: str) -> str:
     """
-    Find the lines that contain some text in a file, or in every file under a folder (PDF and Word files too; case does not matter). Use it to find where something is defined or mentioned, or the errors in a log, instead of opening files one by one.
+    Find the lines that contain some text in a file, or in every file under a folder (PDF and Word files too; case does not matter). Use it to find where something is defined or mentioned, or the errors in a log, instead of opening files one by one. To understand or debug a file, read it instead.
 
     Args:
         text: The word, name or phrase to look for
