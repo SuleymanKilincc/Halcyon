@@ -65,7 +65,7 @@ Before, five tasks failed for **every** model and every seed, the 26B one includ
 | e4b | 10 | 31 | 37 | 32 | 34 |
 | 26B | 18 | 44 | 45 | 45 | 44 |
 
-After the fixes for Qodo's review of this work, a check run gave 39 (typed) and 38 (spoken) for the 9B model: inside that range, with no think tags in any reply. Changes of up to about five between rounds are as much sampling as code (the 9B model went from 37 to 32 and back with fixes that could not have lowered it); the step from *before* to any round is far larger than that.
+After the fixes for Qodo's review of this work, a check run gave 39 (typed) and 38 (spoken) for the 9B model: inside that range, with no think tags in any reply. Typed turns then got a written persona of their own (docs/MODES.md, "Typing and speaking"), which the benchmark uses for typed runs too: 41 for the 9B model, with the Word task at 3/3 (from 1/3) and the two research tasks at 2/6 (from 3/6), the one place the model still answers from a search snippet instead of opening the page. Changes of up to about five between rounds are as much sampling as code (the 9B model went from 37 to 32 and back with fixes that could not have lowered it); the step from *before* to any round is far larger than that.
 
 ## What was wrong, and what changed
 

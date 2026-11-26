@@ -83,8 +83,9 @@ def build_assistant() -> Assistant:
 
 
 class Session:
-    def __init__(self, emit: Emit, build: Callable[[], Assistant] = build_assistant) -> None:
-        self.emit = emit
+    def __init__(self, emit: Emit, build: Callable[[], Assistant] = build_assistant,
+                 history: Any = None) -> None:  # noqa: ANN401 - ui.history.History, or None to keep nothing
+        self._out = emit
         self._build = build
         self.assistant: Assistant | None = None
         self._lock = threading.Lock()
@@ -92,6 +93,54 @@ class Session:
         self._voice = None             # the running voice loop, which owns the model while it runs
         self._mic_starting = False     # a voice loop is being built (owns the model already)
         self._voice_thread: threading.Thread | None = None
+
+        self.history = history
+        self.chat_id: int | None = None     # the saved chat on screen; None until its first message
+        self._reply: list[str] = []         # the reply being written, to be saved when it is done
+        self._reply_via = "text"
+        self._reply_failed = False          # an error arrived while the reply was being written
+        self._restore: list[dict] | None = None   # a reopened chat, for a model still loading
+
+    # ---------------------------------------------------------------- events
+
+    def emit(self, event: dict) -> None:
+        """Send an event to the page, and keep what it shows of the conversation."""
+        self._out(event)
+        if self.history is None:
+            return
+        try:
+            self._record(event)
+        except Exception as exc:  # noqa: BLE001 - a full disk must not end the conversation
+            self._out({"type": "error", "message": f"The conversation could not be saved: {exc}"})
+
+    def _record(self, event: dict) -> None:
+        kind = event["type"]
+        if kind == "user":
+            if self.chat_id is None or not self.history.exists(self.chat_id):
+                self.chat_id = self.history.create(event["text"])
+                self._out({"type": "chat", "id": self.chat_id})
+            self._reply, self._reply_via, self._reply_failed = [], event.get("via", "text"), False
+            self.history.add(self.chat_id, "user", event["text"], self._reply_via)
+            self._send_chats()
+        elif kind == "assistant_start":
+            self._reply, self._reply_failed = [], False
+        elif kind == "delta":
+            self._reply.append(event["text"])
+        elif kind == "error":
+            self._reply_failed = bool(self._reply)
+        elif kind == "assistant_done":
+            text, self._reply = "".join(self._reply).strip(), []
+            if text and self.chat_id is not None:
+                # A reply an error cut short is kept, marked, so it is not shown or given back to
+                # the model as a finished answer (found in review).
+                status = ("error" if self._reply_failed
+                          else "interrupted" if event.get("status") == "interrupted" else "")
+                self.history.add(self.chat_id, "assistant", text, self._reply_via, status)
+                self._send_chats()
+
+    def _send_chats(self) -> None:
+        if self.history is not None:
+            self._out({"type": "chats", "chats": self.history.chats()})
 
     # ----------------------------------------------------------------- start
 
@@ -103,13 +152,18 @@ class Session:
 
     def _load(self) -> None:
         self.emit({"type": "state", "state": "loading", "detail": "Loading the model"})
+        self._send_chats()             # the saved chats can be read while the model loads
         try:
-            self.assistant = self._build()
+            assistant = self._build()
         except Exception as exc:  # noqa: BLE001 - shown in the window, not a crash
             self.emit({"type": "state", "state": "error", "detail": str(exc)})
             self.emit({"type": "error", "message": f"The assistant could not start: {exc}"})
             return
-        self.emit({"type": "info", **self.assistant.describe, "mode": self._mode()})
+        with self._lock:
+            self.assistant = assistant
+            self._apply_restore()      # a chat reopened while the model was loading
+        self.emit({"type": "info", **self.assistant.describe, "mode": self._mode(),
+                   "history": self.history is not None})
         self.emit({"type": "state", "state": "ready"})
 
     # ------------------------------------------------------------------ text
@@ -238,6 +292,82 @@ class Session:
     def close(self) -> None:
         self.mic_off()
 
+    # ----------------------------------------------------------------- chats
+
+    def chats(self) -> list[dict]:
+        return self.history.chats() if self.history is not None else []
+
+    def _idle(self) -> bool:
+        """Nothing owns the model (call under the lock): a chat can be switched."""
+        return not (self._busy or self._voice is not None or self._mic_starting)
+
+    def new_chat(self) -> bool:
+        """An empty conversation. False while a reply is written or the microphone is on."""
+        with self._lock:
+            if not self._idle():
+                return False
+            self._switch(None, [])
+        return True
+
+    def open_chat(self, chat_id: int) -> bool:
+        """Show a saved chat and carry on from it. False while busy, or if it no longer exists."""
+        if self.history is None:
+            return False
+        with self._lock:
+            if not self._idle() or not self.history.exists(chat_id):
+                return False
+            self._switch(chat_id, self.history.messages(chat_id))
+        return True
+
+    def rename_chat(self, chat_id: int, title: str) -> bool:
+        if self.history is None or not self.history.rename(chat_id, title):
+            return False
+        self._send_chats()
+        return True
+
+    def pin_chat(self, chat_id: int, pinned: bool) -> bool:
+        if self.history is None or not self.history.pin(chat_id, pinned):
+            return False
+        self._send_chats()
+        return True
+
+    def delete_chat(self, chat_id: int) -> bool:
+        """Delete a saved chat. The one on screen can only go while nothing is being written to it."""
+        if self.history is None:
+            return False
+        with self._lock:
+            current = chat_id == self.chat_id
+            if current and not self._idle():
+                return False
+            if not self.history.delete(chat_id):
+                return False
+            if current:
+                self._switch(None, [])
+        self._send_chats()
+        return True
+
+    def _switch(self, chat_id: int | None, messages: list[dict]) -> None:
+        """(Under the lock.) Put another conversation on screen and in the model's history."""
+        self.chat_id = chat_id
+        self._reply = []
+        self._restore = messages
+        self._apply_restore()
+        self._out({"type": "conversation", "id": chat_id, "messages": messages})
+
+    def _apply_restore(self) -> None:
+        """(Under the lock.) Give the model the conversation that was switched to, once it exists."""
+        if self._restore is None or self.assistant is None:
+            return
+        messages, self._restore = self._restore, None
+        llm = self.assistant.llm
+        if messages and hasattr(llm, "load_history"):
+            llm.load_history(messages)
+        elif hasattr(llm, "reset"):
+            llm.reset()
+        forget = getattr(self.assistant.controller, "forget", None)
+        if forget is not None:
+            forget()
+
     # ---------------------------------------------------------------- helpers
 
     def _typed(self, typed: bool) -> None:
@@ -250,7 +380,7 @@ class Session:
         if hasattr(assistant.llm, "max_tool_rounds"):
             assistant.llm.max_tool_rounds = TYPED_TOOL_ROUNDS if typed else SPOKEN_TOOL_ROUNDS
         if assistant.controller is not None:
-            assistant.controller.spoken = not typed
+            assistant.controller.set_spoken(not typed)
 
     def _mode(self) -> str:
         controller = self.assistant.controller if self.assistant else None

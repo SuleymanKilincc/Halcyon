@@ -25,6 +25,9 @@ class FakeController:
     def status(self):
         return "mode: general | request: chat tier 0"
 
+    def set_spoken(self, spoken):
+        self.spoken = spoken
+
 
 def answer(transcript):
     yield "Hello "
@@ -65,7 +68,8 @@ def wait_for(events, kind, count=1, timeout=3.0):
 def test_loading_is_shown_and_then_ready_with_what_was_loaded():
     _, events, _ = make()
     assert events[0] == {"type": "state", "state": "loading", "detail": "Loading the model"}
-    assert {"type": "info", "model": "fake:1b", "hardware": "fake GPU", "mode": "general"} in events
+    assert {"type": "info", "model": "fake:1b", "hardware": "fake GPU", "mode": "general",
+            "history": False} in events
     assert events[-1] == {"type": "state", "state": "ready"}
 
 
@@ -237,7 +241,21 @@ def test_the_page_cannot_act_before_there_is_a_session():
 def test_the_page_sees_only_the_calls_it_needs():
     """pywebview exposes every public attribute to the page and walks into it."""
     public = {name for name in vars(Bridge()) if not name.startswith("_")} |              {name for name in dir(Bridge) if not name.startswith("_")}
-    assert public == {"ready", "send", "mic", "emit"}
+    assert public == {"ready", "send", "mic", "emit", "chats", "new_chat", "open_chat", "rename_chat",
+                      "pin_chat", "delete_chat", "settings"}
+
+
+def test_the_window_opens_the_page_by_a_plain_file_address():
+    """WebView2 reads a query string as part of the file name: index.html?demo=1 was "File not found"."""
+    from ui.app import page_url
+
+    url = page_url()
+    assert url.startswith("file:") and url.endswith("/index.html") and "?" not in url
+
+
+def test_the_page_gets_its_language_and_demo_setting_from_the_bridge():
+    assert Bridge(language="tr", demo=True).settings() == {"language": "tr", "demo": True}
+    assert Bridge().settings() == {"language": "en", "demo": False}
 
 
 # ------------------------------------------------------------------ found in Qodo's review of #5

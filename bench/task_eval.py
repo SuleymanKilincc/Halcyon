@@ -346,7 +346,7 @@ def judge(task: Task, reply: str, calls: list[str]) -> list[str]:
 def build(model: str | None, deep: bool, spoken: bool = False) -> Any:  # noqa: ANN401
     import core.llm as llm_module
     from core.llm import build_llm, model_capabilities
-    from core.modes import DEEP_SYSTEM_TYPED
+    from core.modes import DEEP_SYSTEM_TYPED, GENERAL, GENERAL_SYSTEM_TYPED, default_modes, modes_statement
     from core.profiles import PERFORMANCE
     from core.voice_tools import capability_statement, environment_statement, get_voice_tools
 
@@ -357,6 +357,11 @@ def build(model: str | None, deep: bool, spoken: bool = False) -> Any:  # noqa: 
         # What core/router.py gives deep mode when typing: its persona, the reply budget, the statements.
         profile = replace(profile, llm_num_predict=1500)
         system = DEEP_SYSTEM_TYPED + "\n" + capability_statement(tools) + "\n" + environment_statement()
+    elif not spoken:
+        # What core/router.py gives general mode when typing (the window, --text).
+        profile = replace(profile, llm_num_predict=GENERAL.num_predict_typed)
+        system = (GENERAL_SYSTEM_TYPED + "\n" + capability_statement(tools) + "\n" + environment_statement()
+                  + "\n" + modes_statement(default_modes(), "general"))
     llm = build_llm(profile, tools=tools, system=system)
     capabilities = model_capabilities(profile.llm_model)
     if capabilities is not None:

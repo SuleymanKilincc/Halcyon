@@ -7,35 +7,58 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header class="bar">
-    <div class="brand">
-      <span class="logo" aria-hidden="true"></span>
-      <span class="name">Halcyon</span>
-      <span class="mode" id="mode" data-i18n="mode.general">general mode</span>
+  <aside class="sidebar" id="sidebar" data-i18n-aria="chats.label" aria-label="Chats">
+    <div class="side-top">
+      <button class="new-chat" id="new-chat" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6V5Z"/></svg>
+        <span data-i18n="chat.new">New chat</span>
+      </button>
     </div>
-    <div class="status" id="status" data-state="loading" role="status" aria-live="polite">
-      <span class="dot" aria-hidden="true"></span>
-      <span class="label" id="status-label">…</span>
+    <nav class="chat-list" id="chat-list"></nav>
+    <div class="side-foot">
+      <p class="privacy" id="privacy" data-i18n="history.local">Chats are kept only on this computer.</p>
+      <div class="lang" role="group" aria-label="Language / Dil">
+        <button type="button" data-lang="tr">TR</button>
+        <button type="button" data-lang="en">EN</button>
+      </div>
     </div>
-  </header>
+  </aside>
+  <div class="scrim" id="scrim" hidden></div>
 
-  <main class="conversation" id="conversation" aria-live="polite">
-    <div class="welcome" id="welcome">
-      <p class="welcome-title" data-i18n="welcome.title">Your assistant, on your own computer.</p>
-      <p class="welcome-hint" data-i18n="welcome.hint">Type below, or turn on the microphone and talk.</p>
-    </div>
-  </main>
+  <div class="main">
+    <header class="bar">
+      <div class="brand">
+        <button class="icon-button" id="toggle-side" type="button" data-i18n-title="chats.toggle" title="Show or hide the chats" aria-controls="sidebar">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v2H4V6Zm0 5h16v2H4v-2Zm0 5h10v2H4v-2Z"/></svg>
+        </button>
+        <span class="logo" aria-hidden="true"></span>
+        <span class="name">Halcyon</span>
+        <span class="mode" id="mode" data-i18n="mode.general">general mode</span>
+      </div>
+      <div class="status" id="status" data-state="loading" role="status" aria-live="polite">
+        <span class="dot" aria-hidden="true"></span>
+        <span class="label" id="status-label">…</span>
+      </div>
+    </header>
 
-  <footer class="composer">
-    <button class="mic" id="mic" type="button" aria-pressed="false" data-i18n-title="mic.on" title="Turn the microphone on">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-2.08A7 7 0 0 0 19 12h-2Z"/></svg>
-    </button>
-    <textarea id="input" rows="1" data-i18n-placeholder="input.placeholder" placeholder="Message Halcyon"></textarea>
-    <button class="send" id="send" type="button" data-i18n-title="send" title="Send">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.4 20.4 21 12 3.4 3.6 3 10l12 2-12 2 .4 6.4Z"/></svg>
-    </button>
-  </footer>
-  <p class="meta" id="meta"></p>
+    <main class="conversation" id="conversation" aria-live="polite">
+      <div class="welcome" id="welcome">
+        <p class="welcome-title" data-i18n="welcome.title">Your assistant, on your own computer.</p>
+        <p class="welcome-hint" data-i18n="welcome.hint">Type below, or turn on the microphone and talk.</p>
+      </div>
+    </main>
+
+    <footer class="composer">
+      <button class="mic" id="mic" type="button" aria-pressed="false" data-i18n-title="mic.on" title="Turn the microphone on">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-2.08A7 7 0 0 0 19 12h-2Z"/></svg>
+      </button>
+      <textarea id="input" rows="1" data-i18n-placeholder="input.placeholder" placeholder="Message Halcyon"></textarea>
+      <button class="send" id="send" type="button" data-i18n-title="send" title="Send">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.4 20.4 21 12 3.4 3.6 3 10l12 2-12 2 .4 6.4Z"/></svg>
+      </button>
+    </footer>
+    <p class="meta" id="meta"></p>
+  </div>
 
   <script src="app.js"></script>
 </body>
