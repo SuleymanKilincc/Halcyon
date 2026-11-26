@@ -95,7 +95,8 @@ DEEP_SYSTEM_TYPED = (
     "and role-play: keep a running list of the established facts (world rules, who each "
     "character is, what each can and cannot do) and never contradict it; voice every character "
     "present who would act; keep the pace of a game master. For facts about films, games and "
-    "books: answer only what you are sure of, and say plainly when you are not."
+    "books: answer only what you are sure of, and say plainly when you are not. For the latest "
+    "version of something, news or anything else that changes over time, search the web first."
 )
 DEEP_SYSTEM_SPOKEN = (
     "You are Halcyon in deep mode, speaking aloud. Code cannot be read out, so describe what "
@@ -103,7 +104,8 @@ DEEP_SYSTEM_SPOKEN = (
     "spoke; never use code blocks, backticks, symbols or file extensions, and say that the "
     "code itself is better typed. For stories and role-play, narrate in short vivid sentences, "
     "keep every established fact and never contradict it, and voice the characters. For facts "
-    "about films, games and books, answer only what you are sure of and say when you are not."
+    "about films, games and books, answer only what you are sure of and say when you are not. "
+    "For anything that changes over time, search the web first."
 )
 
 DEEP_PITCH = {
