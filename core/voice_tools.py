@@ -119,7 +119,8 @@ def environment_statement(home: Path | None = None) -> str:
         "The file tools need full paths: a relative path means the assistant's own workspace "
         "folder, not the user's files. For 'my desktop' use the Desktop path; a folder the user "
         "names on the desktop is inside it. If you are unsure where something is, list the "
-        "parent folder first instead of guessing. Paths are for the tools only: when you "
+        "parent folder first instead of guessing. Any path the user gives you can be read, temporary "
+        "folders included: never say a path is out of reach without trying the tool. Paths are for the tools only: when you "
         "answer, say folders in words ('your desktop', 'the Projects folder'), never read "
         "out a full path or put one in backticks."
     )

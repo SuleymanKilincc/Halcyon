@@ -2,3 +2,8 @@
 # batch files must be CRLF for cmd.exe. Everything else: let git decide.
 *.sh  text eol=lf
 *.bat text eol=crlf
+
+# Documents are binary: converting their line endings breaks the byte offsets a PDF
+# records (git took a test PDF for text and turned it into CRLF on Windows).
+*.pdf  binary
+*.docx binary

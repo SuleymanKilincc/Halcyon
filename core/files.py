@@ -46,6 +46,10 @@ SEARCH_MAX_SECONDS = 5.0
 SEARCH_MAX_FILE_BYTES = 5 * 1024 * 1024       # per file when searching a folder
 MAX_TEXT_BYTES = 50 * 1024 * 1024             # a single file read or searched on its own
 MAX_DOCUMENTS_IN_SEARCH = 30
+# A PDF or Word file is parsed whole before a window of it can be shown, so a large one is refused
+# before parsing instead of stalling the tool (found in review).
+MAX_DOCUMENT_BYTES = 30 * 1024 * 1024
+SEARCH_MAX_FILES_COUNTED = 1000   # files whose extra matches are counted by name in a folder search
 MAX_PDF_PAGES = 300
 TREE_MAX_DEPTH = 4
 FOLDER_PREVIEW = 30             # names shown when a path is wrong, so the next call can be right
@@ -56,6 +60,9 @@ SKIP_DIRS = frozenset({
     ".pytest_cache", ".ruff_cache", ".tox", ".idea", ".vscode", "site-packages", ".cache",
 })
 DOCUMENT_SUFFIXES = frozenset({".pdf", ".docx"})
+# What matters in a log is the latest; read from the start, the 9B model invented the "last
+# error" of a log whose first page had none (measured). A log is shown from its end by default.
+LOG_SUFFIXES = frozenset({".log", ".out", ".err"})
 BINARY_SUFFIXES = frozenset({
     ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".ico", ".webp", ".tif", ".tiff", ".psd",
     ".mp3", ".wav", ".ogg", ".flac", ".m4a", ".mp4", ".mkv", ".avi", ".mov", ".webm",
@@ -251,8 +258,11 @@ def read_window(path: Path, start_line: int = 1, end_line: int = 0) -> str:
     Part of a file with line numbers, never more than WINDOW_CHARS of it.
 
     start_line counts from 1; a negative start_line counts from the end (-50: the last 50
-    lines). end_line 0 means "as far as fits". A file that fits whole is returned whole.
+    lines); 0 means the default: the start, or the end for a log. end_line 0 means "as far as
+    fits". A file that fits whole is returned whole.
     """
+    if start_line == 0:
+        start_line = -200 if path.suffix.lower() in LOG_SUFFIXES and not end_line else 1
     name = path.name
     suffix = path.suffix.lower()
     try:
@@ -261,6 +271,9 @@ def read_window(path: Path, start_line: int = 1, end_line: int = 0) -> str:
         return f"{name} cannot be read: {exc}"
 
     if suffix in DOCUMENT_SUFFIXES:
+        if size > MAX_DOCUMENT_BYTES:
+            return (f"{name} is a {size_text(size)} document, too large to read here (the limit is "
+                    f"{size_text(MAX_DOCUMENT_BYTES)}).")
         try:
             lines, about = document_lines(path)
         except DocumentError as exc:
@@ -318,8 +331,13 @@ def _window(name: str, about: str, lines: Iterator[str], start_line: int, end_li
     if shown_first == 1 and shown_last == total:
         return f"{name} ({about}, {total} lines):\n{body}"
     # A negative start_line shows as many of the last lines as fit, so the suggestion is generous.
-    footer = (f"[Lines {shown_first}-{shown_last} of {total}. Another part: start_line=<line>; the end of the "
-              f"file: start_line=-200. To find something specific, search the file instead of reading all of it.]")
+    if tail:
+        footer = (f"[Only the last lines are shown: {shown_first}-{shown_last} of {total}. Earlier lines are not "
+                  f"shown here; the start: start_line=1. To find something specific, search the file.]")
+    else:
+        footer = (f"[Only lines {shown_first}-{shown_last} of {total} are shown; say nothing about the rest from "
+                  f"this part. Another part: start_line=<line>; the end of the file: start_line=-200. To find "
+                  f"something specific, search the file instead of reading all of it.]")
     return f"{name} ({about}): lines {shown_first}-{shown_last} of {total}\n{body}\n{footer}"
 
 
@@ -357,7 +375,11 @@ def _lines_of(path: Path, limit_bytes: int) -> Iterator[str]:
     suffix = path.suffix.lower()
     if suffix in DOCUMENT_SUFFIXES:
         try:
+            if path.stat().st_size > MAX_DOCUMENT_BYTES:
+                return
             yield from document_lines(path)[0]
+        except OSError:
+            return
         except DocumentError:
             return
         return
@@ -388,63 +410,83 @@ def search(query: str, path: Path) -> str:
     files = [path] if single else _walk(path, started)
     limit = MAX_TEXT_BYTES if single else SEARCH_MAX_FILE_BYTES
 
-    exact: list[tuple[str, int, str]] = []
-    scored: list[tuple[int, str, int, str]] = []
+    # Matches are counted, and only what can be shown is kept: a common word in a large log used
+    # to keep every matching line in memory to show thirty of them (found in review).
+    half = SEARCH_MAX_SHOWN // 2
+    first: list[tuple[str, int, str]] = []
+    last: deque[tuple[str, int, str]] = deque(maxlen=half)
+    count = 0
+    elsewhere: dict[str, int] = {}
+    best, closest = 0, []
     words = _words(query)
     scanned = 0
+    too_large = 0
     for file in files:
         if scanned >= SEARCH_MAX_FILES:
             break
         scanned += 1
+        try:
+            size = file.stat().st_size
+        except OSError:
+            continue
+        documents = file.suffix.lower() in DOCUMENT_SUFFIXES
+        if size > (MAX_DOCUMENT_BYTES if documents else limit):
+            too_large += 1          # said in the answer, not silently left out (found in review)
+            continue
         shown_name = file.name if single else file.relative_to(path).as_posix()
         for number, line in enumerate(_lines_of(file, limit), 1):
             folded = _normalise(line)
             if needle in folded:
-                exact.append((shown_name, number, line))
-            elif words:
+                count += 1
+                entry = (shown_name, number, line[:SEARCH_LINE_CHARS + 20])
+                if len(first) < (half if single else SEARCH_MAX_SHOWN):
+                    first.append(entry)
+                elif single:
+                    last.append(entry)
+                elif shown_name in elsewhere or len(elsewhere) < SEARCH_MAX_FILES_COUNTED:
+                    elsewhere[shown_name] = elsewhere.get(shown_name, 0) + 1
+            elif words and not count:
+                # The closest lines matter only while nothing has matched exactly.
                 hits = sum(1 for w in words if w in folded)
-                if hits:
-                    scored.append((hits, shown_name, number, line))
+                if hits > best:
+                    best, closest = hits, [(shown_name, number, line[:SEARCH_LINE_CHARS + 20])]
+                elif hits and hits == best and len(closest) < SEARCH_MAX_SHOWN:
+                    closest.append((shown_name, number, line[:SEARCH_LINE_CHARS + 20]))
     timed_out = time.perf_counter() - started > SEARCH_MAX_SECONDS
     where = path.name if single else f"{path.as_posix()} ({scanned} files searched)"
 
     notes = []
     if timed_out or scanned >= SEARCH_MAX_FILES:
         notes.append("The search stopped early: search a smaller folder for a complete answer.")
+    if too_large:
+        notes.append(f"{too_large} file{'s were' if too_large != 1 else ' was'} too large to search and "
+                     f"{'were' if too_large != 1 else 'was'} skipped; search in {'them' if too_large != 1 else 'it'} directly.")
 
-    if exact:
-        verb = "lines contain" if len(exact) != 1 else "line contains"
-        header = f'{len(exact)} {verb} "{query}" in {where}:'
-        return _matches_text(header, exact, single, notes)
-    if scored:
-        best = max(s[0] for s in scored)
-        closest = [(name, number, line) for hits, name, number, line in scored if hits == best]
+    if count:
+        verb = "lines contain" if count != 1 else "line contains"
+        shown = [_match_line(m) for m in first]
+        gap = count - len(first) - len(last)
+        if single:
+            if gap:
+                shown.append(f"... {gap} more in between ...")
+            shown.extend(_match_line(m) for m in last)
+        elif elsewhere:
+            listed = ", ".join(f"{name} ({n})" for name, n in list(elsewhere.items())[:10])
+            shown.append(f"... and {count - len(first)} more in: {listed}")
+        return _fit_lines(f'{count} {verb} "{query}" in {where}:', shown, notes)
+    if closest:
         header = (f'No line contains "{query}" as written in {where}. The closest lines, with '
                   f'{best} of the words ({", ".join(words)}):')
-        return _matches_text(header, closest, single, notes)
+        return _fit_lines(header, [_match_line(m) for m in closest], notes)
     return f'No line contains "{query}" in {where}.' + (" " + " ".join(notes) if notes else "")
 
 
-def _matches_text(header: str, matches: list[tuple[str, int, str]], single: bool, notes: list[str]) -> str:
-    def line(entry: tuple[str, int, str]) -> str:
-        name, number, text = entry
-        return f"{name}:{number}: {_cut(text.strip(), SEARCH_LINE_CHARS)}"
+def _match_line(entry: tuple[str, int, str]) -> str:
+    name, number, text = entry
+    return f"{name}:{number}: {_cut(text.strip(), SEARCH_LINE_CHARS)}"
 
-    if len(matches) <= SEARCH_MAX_SHOWN:
-        shown = [line(m) for m in matches]
-    elif single:
-        # In one file the last matches matter as much as the first (the last error of a log).
-        half = SEARCH_MAX_SHOWN // 2
-        skipped = len(matches) - 2 * half
-        shown = [line(m) for m in matches[:half]] + [f"... {skipped} more in between ..."] + \
-                [line(m) for m in matches[-half:]]
-    else:
-        shown = [line(m) for m in matches[:SEARCH_MAX_SHOWN]]
-        rest: dict[str, int] = {}
-        for name, _, _ in matches[SEARCH_MAX_SHOWN:]:
-            rest[name] = rest.get(name, 0) + 1
-        listed = ", ".join(f"{name} ({count})" for name, count in list(rest.items())[:10])
-        shown.append(f"... and {len(matches) - SEARCH_MAX_SHOWN} more in: {listed}")
+
+def _fit_lines(header: str, shown: list[str], notes: list[str]) -> str:
     out = [header]
     used = len(header)
     for entry in shown:

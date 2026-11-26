@@ -243,3 +243,59 @@ def test_a_huge_folder_is_cut_to_fit_and_says_how_much_is_hidden(tmp_path):
         (tmp_path / f"file_{i:03d}.txt").write_text("x", encoding="utf-8")
     text = listing(tmp_path)
     assert len(text) <= files.WINDOW_CHARS and "more entries not shown" in text
+
+
+# ------------------------------------------------------------ limits (found in review of PR #3)
+
+def test_a_document_too_large_is_refused_before_it_is_parsed(monkeypatch, tmp_path):
+    monkeypatch.setattr(files, "MAX_DOCUMENT_BYTES", 100)
+    big = tmp_path / "spec.pdf"
+    big.write_bytes((FIXTURES / "spec.pdf").read_bytes())
+    assert "too large to read here" in read_window(big)
+    assert "No line contains" in search("voltage", tmp_path)        # and a search passes it by
+
+
+def test_a_common_word_in_a_huge_log_is_counted_and_shown_first_and_last(tmp_path):
+    """Every match used to be kept in memory to show thirty of them."""
+    log = tmp_path / "big.log"
+    log.write_text("".join(f"INFO line {i}\n" for i in range(100_000)), encoding="utf-8")
+    text = search("info", log)
+    assert text.startswith('100000 lines contain "info"')
+    assert "big.log:1:" in text and "big.log:100000:" in text and "more in between" in text
+    assert len(text) <= files.WINDOW_CHARS
+
+
+def test_a_folder_search_with_many_matches_names_where_the_rest_are(project):
+    for i in range(5):
+        (project / f"notes_{i}.txt").write_text("retry\n" * 20, encoding="utf-8")
+    text = search("retry", project)
+    assert "... and" in text and "more in:" in text and "notes_4.txt (20)" in text
+
+
+def test_a_log_is_read_from_its_end_by_default(project):
+    """Read from the start, the 9B model invented the last error of a log whose first page had none."""
+    text = read_window(project / "logs" / "server.log", start_line=0)
+    assert "2951| 2026-11-20 ERROR disk quota exceeded" in text and "3000|" in text
+    assert "Only the last lines are shown" in text and "start_line=1" in text
+    assert "1| " not in text.splitlines()[1]
+
+
+def test_asking_for_line_1_of_a_log_still_gives_its_start(project):
+    assert read_window(project / "logs" / "server.log", start_line=1).splitlines()[1].startswith("1| ")
+
+
+def test_other_files_start_at_the_top_by_default(project):
+    assert "1| # Weatherline" in read_window(project / "README.md", start_line=0)
+
+
+def test_a_partial_window_says_not_to_answer_about_the_rest(project):
+    (project / "big.txt").write_text("".join(f"line {i}\n" for i in range(5000)), encoding="utf-8")
+    assert "say nothing about the rest from this part" in read_window(project / "big.txt", start_line=0)
+
+
+def test_a_folder_search_says_what_it_skipped_as_too_large(monkeypatch, project):
+    """A document between the text limit and the document limit was skipped without a word (review of #4)."""
+    monkeypatch.setattr(files, "SEARCH_MAX_FILE_BYTES", 100)
+    text = search("MAX_RETRIES", project)
+    assert "MAX_RETRIES = 7" in text
+    assert "too large to search" in text                 # the 3000-line log was skipped, and it says so
