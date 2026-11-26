@@ -47,6 +47,7 @@ from core.modes import (
     default_modes,
     explicit_mode,
     is_refusal,
+    modes_statement,
     parse_confirmation,
     refused_mode,
     say,
@@ -123,6 +124,29 @@ class ModeController:
         """
         self.base_profile = self.llm.profile
         self._state = _State(self.llm.profile, self.llm.base_system, True, True)
+        self._configure()
+
+    def set_spoken(self, spoken: bool) -> None:
+        """
+        Speaking or typing from now on. The window switches between the two (the microphone
+        button), and each has its own prompt and reply budget, so the running mode is set up
+        again for the new one. Same model, so nothing is loaded.
+        """
+        if spoken == self.spoken:
+            return
+        self.spoken = spoken
+        self._configure()
+
+    def _configure(self) -> None:
+        """Give the client the current mode's prompt and reply budget, without changing its model."""
+        state = self._state
+        profile = self._profile_for(self.current)
+        if profile.llm_model != self.llm.model:
+            return          # only a switch changes the model
+        system = self._system_for(self.current, state.use_tools)
+        self.llm.apply_mode(profile, system=system, use_tools=state.use_tools,
+                            supports_thinking=state.supports_thinking)
+        self._state = _State(profile, system, state.use_tools, state.supports_thinking)
 
     # ------------------------------------------------------------------ status
 
@@ -294,27 +318,33 @@ class ModeController:
             yield say("failed", language, mode=target, current=self.current) + " "
 
     def _profile_for(self, mode: Mode) -> Profile:
-        if mode.key == self.general.key:
-            return self.base_profile
-        changes: dict[str, Any] = {
-            "name": f"{self.base_profile.name}+{mode.key}",
-            "label": f"{self.base_profile.label} + {mode.key}",
-        }
-        if mode.model:
-            changes["llm_model"] = mode.model
+        changes: dict[str, Any] = {}
+        if mode.key != self.general.key:
+            changes["name"] = f"{self.base_profile.name}+{mode.key}"
+            changes["label"] = f"{self.base_profile.label} + {mode.key}"
+            if mode.model:
+                changes["llm_model"] = mode.model
         predict = mode.num_predict_spoken if self.spoken else mode.num_predict_typed
         if predict:
             changes["llm_num_predict"] = predict
-        return replace(self.base_profile, **changes)
+        return replace(self.base_profile, **changes) if changes else self.base_profile
 
     def _system_for(self, mode: Mode, use_tools: bool) -> str:
-        persona = mode.persona_spoken if self.spoken else mode.persona_typed
+        # A mode with no persona of its own (research) builds on general mode's, so typing in
+        # research mode is not held to the two spoken sentences.
+        persona = ((mode.persona_spoken or self.general.persona_spoken) if self.spoken
+                   else (mode.persona_typed or self.general.persona_typed))
         if persona:
             tools = self.llm.tool_objects() if use_tools else []
             system = persona + "\n" + capability_statement(tools)
-            return system + ("\n" + environment_statement() if tools else "")
-        system = self.llm.base_system
-        return system + ("\n" + mode.addendum if mode.addendum else "")
+            system += "\n" + environment_statement() if tools else ""
+        else:
+            system = self.llm.base_system
+        if mode.addendum:
+            system += "\n" + mode.addendum
+        if mode.key in self.modes:
+            system += "\n" + modes_statement(self.modes, mode.key)
+        return system
 
     def _apply(self, mode: Mode) -> bool:
         profile = self._profile_for(mode)

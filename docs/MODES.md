@@ -62,8 +62,12 @@ ollama pull gemma4:e4b         # Light, 9.6 GB
 | | General mode | Deep mode (typed) | Deep mode (spoken) | Research mode |
 |---|---|---|---|---|
 | Model | the profile's own (`qwen3.5:9b` on 8 GB) | the pack's model | same | the profile's own |
-| Reply budget | profile (300 tokens) | 1500 | 400 | 700 typed, 420 spoken |
-| Prompt | the Halcyon persona | careful engineer, game master that keeps a list of established facts, honest about facts it is unsure of | the same, with code described in words (no symbols) | persona + "search first, name the source" |
+| Reply budget | 1200 typed; the profile's when spoken (300 tokens on 8 GB, 160 on the 4B model) | 1500 | 400 | 700 typed, 420 spoken |
+| Prompt | typed: a written persona (Markdown, code blocks, length to fit the question); spoken: the Halcyon persona (two sentences, no symbols) | careful engineer, game master that keeps a list of established facts, honest about facts it is unsure of | the same, with code described in words (no symbols) | general mode's persona for the channel + "search first, name the source" |
+
+Every mode's prompt also says which modes exist, what each is for and which one is running (`modes_statement`), so "how many modes do you have?" is answered rather than read as a question about Python's `%` operator, which is what happened before.
+
+**Typing and speaking.** The spoken persona says "you are speaking aloud, two sentences at most, no code". Typed into the window, that made the assistant say it "cannot write code", and the spoken reply budget (160 tokens on the 4B model) cut an explanation off mid-word. So general mode has a written persona with the same rules about tools, honesty and the web, and a 1200-token budget. The window switches between the two whenever the microphone goes on or off (`ModeController.set_spoken`); the model stays, only the prompt and the budget change. Measured with `bench/task_eval.py`, the 9B model with the written persona passed 41 of 45 task runs (39 in the round before, with the spoken persona); the Word task went from 1/3 to 3/3, research stayed weak (docs/TOOLS.md).
 
 The conversation is kept across a switch: after moving to deep mode, "what was my name?" still works. Before the new model loads, Ollama is asked what it can do (`/api/show`): a model without `tools` is not sent tools, and one without `thinking` is not sent the `think` parameter, because both are errors rather than being ignored. Capabilities Ollama does not report are left at their defaults.
 

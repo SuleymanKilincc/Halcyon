@@ -25,6 +25,9 @@ class FakeController:
     def status(self):
         return "mode: general | request: chat tier 0"
 
+    def set_spoken(self, spoken):
+        self.spoken = spoken
+
 
 def answer(transcript):
     yield "Hello "

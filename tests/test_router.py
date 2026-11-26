@@ -13,7 +13,7 @@ The real handler yields raw text deltas; the fakes do too.
 
 import pytest
 
-from core.modes import default_modes
+from core.modes import GENERAL_SYSTEM_TYPED, default_modes
 from core.profiles import PERFORMANCE
 from core.router import ModeController
 from voice.stt import Transcript
@@ -325,7 +325,7 @@ def test_yes_to_going_back_returns_to_the_general_model_and_answers():
     reply = turn(controller, "yes")
     assert controller.current.key == "general"
     assert llm.model == PERFORMANCE.llm_model
-    assert llm.system == "BASE"
+    assert llm.system.startswith(GENERAL_SYSTEM_TYPED)     # typed: general mode's written prompt
     assert reply.endswith(f"[{PERFORMANCE.llm_model}] answer")
 
 
@@ -343,7 +343,7 @@ def test_a_mode_that_only_changes_the_prompt_loads_nothing_and_asks_nothing():
     reply = turn(controller, "Research the pros and cons of electric cars in depth, with detailed reports and sources")
     assert "Switching to research mode." in reply and "Research mode is ready." in reply
     assert "unload" not in llm.events and not any(e.startswith("warmup") for e in llm.events)
-    assert "Research mode" in llm.system and llm.system.startswith("BASE")
+    assert "Research mode" in llm.system and llm.system.startswith(GENERAL_SYSTEM_TYPED)
     assert reply.endswith("answer")
 
 
@@ -458,3 +458,61 @@ def test_after_a_startup_step_down_general_mode_is_the_smaller_model():
     turn(controller, "switch to deep mode")
     turn(controller, "genel moda dön")
     assert llm.model == "qwen3.5:4b"
+
+
+# --------------------------------------------------------- typing and speaking
+
+def test_typing_gets_a_written_prompt_and_room_to_finish():
+    """In the window the spoken prompt said it could not write code and 160 tokens cut replies off."""
+    controller, llm, _ = make(spoken=False)
+    controller.rebase()
+    assert llm.system.startswith(GENERAL_SYSTEM_TYPED)
+    assert "two sentences" not in llm.system
+    assert llm.profile.llm_num_predict == 1200
+    assert llm.model == PERFORMANCE.llm_model and "unload" not in llm.events
+
+
+def test_speaking_keeps_the_spoken_prompt_and_its_short_budget():
+    controller, llm, _ = make(spoken=True)
+    controller.rebase()
+    assert llm.system.startswith("BASE")
+    assert llm.profile.llm_num_predict == PERFORMANCE.llm_num_predict
+
+
+def test_switching_between_typing_and_speaking_loads_nothing():
+    controller, llm, _ = make(spoken=False)
+    controller.rebase()
+    controller.set_spoken(True)
+    assert llm.system.startswith("BASE") and llm.profile.llm_num_predict == PERFORMANCE.llm_num_predict
+    controller.set_spoken(False)
+    assert llm.system.startswith(GENERAL_SYSTEM_TYPED) and llm.profile.llm_num_predict == 1200
+    assert not any(e == "unload" or e.startswith("warmup") for e in llm.events)
+
+
+def test_switching_to_speech_in_deep_mode_keeps_the_deep_model():
+    controller, llm, _ = make(spoken=False)
+    controller.rebase()
+    turn(controller, "switch to deep mode")
+    loads = len([e for e in llm.events if e.startswith("warmup")])
+    controller.set_spoken(True)
+    assert llm.model == DEEP and llm.profile.llm_num_predict == 400
+    assert len([e for e in llm.events if e.startswith("warmup")]) == loads
+
+
+def test_the_assistant_is_told_its_modes_and_which_one_is_running():
+    """Asked 'how many modes do you have?', it explained Python's % operator instead."""
+    controller, llm, _ = make(spoken=False)
+    controller.rebase()
+    assert "Your modes: general mode" in llm.system and "deep mode (" in llm.system
+    assert "You are in general mode now." in llm.system
+    turn(controller, "switch to deep mode")
+    assert "You are in deep mode now." in llm.system
+
+
+def test_a_machine_without_deep_mode_is_not_told_about_it():
+    from core.modes import modes_statement
+
+    modes = default_modes({})
+    modes.pop("deep")
+    statement = modes_statement(modes, "general")
+    assert "deep mode (" not in statement and "research mode (" in statement

@@ -250,7 +250,7 @@ class Session:
         if hasattr(assistant.llm, "max_tool_rounds"):
             assistant.llm.max_tool_rounds = TYPED_TOOL_ROUNDS if typed else SPOKEN_TOOL_ROUNDS
         if assistant.controller is not None:
-            assistant.controller.spoken = not typed
+            assistant.controller.set_spoken(not typed)
 
     def _mode(self) -> str:
         controller = self.assistant.controller if self.assistant else None
