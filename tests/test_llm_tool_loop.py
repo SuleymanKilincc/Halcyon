@@ -361,3 +361,15 @@ def test_tool_calls_as_the_real_client_returns_them_do_not_break_the_loop():
     llm = make_llm([[{"message": {"content": "", "tool_calls": [call]}}], [text("It says HI.")]], tools=[shout])
     assert "".join(llm.stream("shout hi")) == "It says HI."
     assert llm.last_tool_calls == ["shout"]
+
+
+def test_an_empty_reply_is_sent_back_once_to_act():
+    llm = make_llm([[text("")], [tool_call("shout", word="ok")], [text("It says OK.")]], tools=[shout])
+    assert "".join(llm.stream("what does it say?")).strip() == "It says OK."
+    assert ACT_NOW_NOTE in llm._client.requests[1]["messages"][0]["content"]
+
+
+def test_an_empty_final_answer_says_it_could_not_finish_instead_of_nothing():
+    llm = make_llm([[tool_call("shout", word="a")], [text("")]], tools=[shout])
+    llm.max_tool_rounds = 1
+    assert "".join(llm.stream("go", language="tr")) == "Bunu tamamlayamadım efendim."

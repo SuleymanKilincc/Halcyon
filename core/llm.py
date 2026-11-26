@@ -414,12 +414,16 @@ class SpeechLLM:
                     reply = "".join(assistant_text)
                     self._history.append({"role": "assistant", "content": reply})
                     if (not final and not nudged and self._tools_enabled and self._tool_specs
-                            and announces_action(reply)):
-                        # "Let me check the other files." and then nothing: it said it would
-                        # act and stopped. Once per turn, send it back to do it.
+                            and (announces_action(reply) or not reply.strip())):
+                        # "Let me check the other files." and then nothing, or nothing at all:
+                        # once per turn, send it back to do it.
                         nudged = True
                         note = ACT_NOW_NOTE
                         continue
+                    if not reply.strip() and not "".join(spoken).strip():
+                        # An empty answer is never shown as an answer (measured once on the
+                        # 26B model, after nine rounds of searching).
+                        yield GIVE_UP.get(language or "", GIVE_UP["en"])
                     return
 
                 self._history.append({
