@@ -121,14 +121,9 @@ def _log_lines() -> str:
 
 
 def _write_pdf(path: Path) -> None:
-    from reportlab.lib.pagesizes import A4
-    from reportlab.pdfgen import canvas
-
-    page = canvas.Canvas(str(path), pagesize=A4)          # compressed text streams, like real PDFs
-    page.drawString(72, 760, "Weatherline Station WS-4: Electrical Specification")
-    page.drawString(72, 730, "Supply: 12 to 48 V DC. Maximum input voltage: 48 V.")
-    page.drawString(72, 710, "Typical power draw: 3.2 W. Operating temperature: -30 to 60 C.")
-    page.save()
+    # The committed test fixture: a two-page PDF with compressed text streams, like real PDFs.
+    # Copied rather than generated, so the benchmark needs nothing beyond requirements.txt.
+    path.write_bytes((Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "spec.pdf").read_bytes())
 
 
 def _write_docx(path: Path) -> None:
