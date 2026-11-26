@@ -44,7 +44,7 @@ The direction is a workspace in the spirit of Claude Code and Cursor, with Halcy
 
 ## Checked
 
-**Tests.** Thirty-nine tests cover the session, the store and the bridge:
+**Tests.** Forty-one tests cover the session, the store and the bridge:
 
 - the events arrive in order, and only one reply is written at a time;
 - a model that fails to load or fails half way, and a store that fails, are reported without stopping the conversation;
