@@ -263,11 +263,12 @@ class Task:
     note: str = field(default="", compare=False)
 
 
-# Ways of saying "it is not there". The first judge knew too few: it failed "cannot be found" and
-# "I was unable to find the file", which are right.
+# Ways of saying "it is not there". The first judge knew too few: it failed "cannot be found",
+# "I was unable to find the file" and "There is no database.py file in that folder", which are right.
 NOT_FOUND = ("not found", "does not exist", "doesn't exist", "couldn't find", "could not find", "no such",
              "isn't there", "is not there", "cannot be found", "can't be found", "could not be found",
-             "couldn't be found", "unable to find", "can't find", "cannot find", "bulunamadı", "bulamadım",
+             "couldn't be found", "unable to find", "can't find", "cannot find", "there is no", "there's no",
+             "bulunamadı", "bulamadım",
              "bulunamıyor", "bulunmuyor", "yok", "mevcut değil")
 
 # A number may be written as digits or, as the spoken persona asks, in words; the first judge
