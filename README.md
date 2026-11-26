@@ -127,7 +127,7 @@ python -m voice.cli                 # echo mode: test your microphone and speake
 python -m voice.cli --llm           # talk to Halcyon
 python -m voice.cli --llm --profile battery   # force the CPU profile
 python -m voice.cli --text          # type instead of speaking: no microphone, nothing played
-python -m ui                        # the same assistant in a window (start_halcyon_gui.bat); see docs/UI.md
+python -m ui                        # the same assistant in a window, with saved chats (start_halcyon_gui.bat); see docs/UI.md
 python -m voice.cli --llm --no-modes # never offer to switch to deep or research mode
 python -m voice.cli --llm --profile gpu-4b-8k # force a specific GPU configuration
 python -m voice.cli --devices       # list audio devices, then pass --input / --output
@@ -142,7 +142,7 @@ pip install -r requirements-test.txt
 pytest
 ```
 
-494 tests, about nine seconds, and **no microphone, GPU or Ollama server required**: the hardware and the model server are replaced by fakes, so what gets tested is the project's own logic — sentence splitting, profile selection, the VRAM planner (including what it would choose for cards from 4 to 32 GB), the spill-and-step-down loop, the end-of-speech state machine, the tool-calling loop and conversation memory, and the mode rules and switching conversation. They run on every push on Ubuntu and Windows via GitHub Actions.
+523 tests, about thirteen seconds, and **no microphone, GPU or Ollama server required**: the hardware and the model server are replaced by fakes, so what gets tested is the project's own logic — sentence splitting, profile selection, the VRAM planner (including what it would choose for cards from 4 to 32 GB), the spill-and-step-down loop, the end-of-speech state machine, the tool-calling loop and conversation memory, and the mode rules and switching conversation. They run on every push on Ubuntu and Windows via GitHub Actions.
 
 The tests were checked by deliberately breaking the code: a one-character change to a threshold, and reverting a past bug fix, each turned exactly the right test red.
 
@@ -156,7 +156,7 @@ tests/              automated tests (pytest)
 scripts/manual/     interactive checks that need a human (audio, windows, keyboard input)
 tools.py            tool implementations (files, terminal, web, browser, archives, hardware)
 agent.py            text-mode agent with the full tool set (LangGraph)
-ui/                 the window (python -m ui): session logic, the pywebview bridge, the page
+ui/                 the window (python -m ui): session logic, saved chats, the pywebview bridge, the page
 gui.py              legacy desktop UI from before the current voice pipeline
 database.py         SQLite session storage
 docs/               VOICE.md (pipeline + measurements), MODES.md (deep / research modes, packs, measurements), MODEL_SELECTION.md (how the models were chosen, and what the evidence does not show), TOOLS.md (the file and web tools, measured before and after), LICENSES.md, MEMORY.md (embedding model choice); archive/HISTORY.md (how the project got here)

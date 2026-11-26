@@ -1,29 +1,78 @@
 # The window
 
-`python -m ui` (or `start_halcyon_gui.bat`) opens Halcyon in a desktop window: the conversation, a live status (loading, ready, listening, thinking, speaking), a message box and a microphone button. It is the same assistant as `python -m voice.cli`: the same model, tools, modes and safety rules.
+`python -m ui` (or `start_halcyon_gui.bat`) opens Halcyon in a desktop window. It has:
 
-This is the first version on purpose. The direction is a workspace in the spirit of Claude Code and Cursor (projects, past conversations you can rename and pin, the context a conversation uses, a panel that shows code and sources), with Halcyon's own take on it: local, spoken as well as typed, and asking before it does anything.
+- the conversation, with a copy button on every message and every code block;
+- the saved chats on the left, which you can open, rename, pin and delete;
+- a live status: loading, ready, listening, thinking or speaking;
+- a message box and a microphone button.
+
+It is the same assistant as `python -m voice.cli`: the same model, tools, modes and safety rules.
+
+The direction is a workspace in the spirit of Claude Code and Cursor, with Halcyon's own take on it: local, spoken as well as typed, and asking before it does anything. Past conversations are the first part of that. Still to come: projects, the context a conversation uses, and a panel that shows code and sources.
 
 ## How it is built
 
 | Part | What it does |
 |---|---|
-| `ui/session.py` | One conversation as a stream of small events (`state`, `user`, `delta`, `assistant_done`, `error`, `info`). Loads the model, answers typed messages and runs the voice loop on background threads, so the window never freezes. No window code, so it is tested without one (`tests/test_ui_session.py`). |
-| `ui/app.py` | The window, drawn by the web view Windows already has (Edge WebView2) through pywebview, and the bridge the page calls: `ready`, `send`, `mic`. Every public attribute of the bridge is reachable from the page, so it has only those (a test keeps it that way). |
+| `ui/session.py` | One conversation as a stream of small events: `state`, `user`, `delta`, `assistant_done`, `error`, `info`, `chats`, `chat` and `conversation`. It loads the model, answers typed messages and runs the voice loop on background threads, so the window never freezes. It saves what it shows and switches between chats. It has no window code, so it is tested without one (`tests/test_ui_session.py`, `tests/test_history.py`). |
+| `ui/history.py` | The saved chats, in one SQLite file in your own data folder (`%LOCALAPPDATA%\Halcyon\history.db`). |
+| `ui/app.py` | The window, drawn by the web view Windows already has (Edge WebView2) through pywebview. It also holds the bridge the page calls: `settings`, `ready`, `send`, `mic`, `chats`, `new_chat`, `open_chat`, `rename_chat`, `pin_chat`, `delete_chat`. Every public attribute of the bridge is reachable from the page, so it has only those, and a test keeps it that way. |
 | `ui/web/` | The page: HTML, CSS and a small script. Replies are escaped before the little formatting there is (code blocks, inline code, bold), because a model can be made to write HTML. |
 
-Design: calm and plain, the colours of a dark sea with one turquoise accent; motion only where the state changes, and none when the system asks for reduced motion. Labels follow the system language (Turkish or English).
+**Design.** Calm and plain: the colours of a dark sea with one turquoise accent. Motion happens only where the state changes, and none at all when the system asks for reduced motion.
+
+**Language.** The labels are Turkish or English. The default is the first language in Windows Settings > Language. The web view's own choice was not used because it follows the display language, which was English on a machine whose user writes Turkish. The TR/EN switch at the bottom of the chat list changes it, and the choice is remembered.
+
+## Past conversations
+
+- **Saving.** A chat is saved from its first message. Its title is that message, cut at a word, and you can rename it. Pinned chats come first, then the rest are grouped by day.
+- **What is kept.** Your messages and the replies, as the window showed them, each marked typed or spoken. A reply cut off by speaking over it is marked "interrupted". Tool results are not kept, and neither are error messages.
+- **Reopening.** A chat you reopen continues where it stopped. Its questions and answers become the model's history again, cut to the usual length. A file read back then is read again if you ask about it, because tool results were not saved.
+- **Switching chats** is refused while a reply is being written or the microphone is on: both own the model.
+- **Where it lives.** Only on this computer, never in the cloud or the repository. `HALCYON_DATA=<folder>` moves the file; `python -m ui --no-history` keeps nothing.
+- **Deleting.** Deleting really deletes. SQLite normally leaves deleted text in the file's free pages until the file is rebuilt. With `secure_delete` on, the freed pages are overwritten, and a test reads the file back to check. With it off, the same test finds the deleted text.
 
 ## Rules it keeps
 
 - **The microphone opens only when you press its button.** Nothing else in the window or the session opens it.
-- **One conversation at a time.** While a reply is being written, or while the microphone is on, the message box is off: the voice loop and a typed message would otherwise use the model at once.
-- **A typed message gets the typed setup** (more tool rounds) and a spoken one the spoken setup, as in the terminal.
+- **One conversation at a time.** While a reply is being written, or while the microphone is on, the message box is off. Otherwise the voice loop and a typed message would use the model at once.
+- **Typed messages get the typed setup and spoken ones the spoken setup.**
+  - Typed: a written prompt that allows code blocks and longer answers, 1200 tokens for a reply, and 8 tool rounds.
+  - Spoken: two sentences, no symbols, the profile's short budget, and 4 tool rounds.
+  - The switch happens when the microphone goes on or off; the model stays loaded (docs/MODES.md, "Typing and speaking").
 
 ## Checked
 
-- 18 tests for the session and the bridge (five of them from Qodo's review: the microphone and a typed reply never share the model, two microphone requests start one loop, the page hears the microphone go off even after an error, speech wakes the GPU, events keep their order while the page catches up): the events in order, one reply at a time, a model that fails to load or fails half way, the microphone never opened by the session, events sent before the page was ready kept in order, model text that cannot break out of the script it is sent in, and the page seeing only the bridge's four calls.
-- The real window, driven through its own page: the model loaded in 22 s, a message typed into the box and sent with the button came back as "The capital of France is Paris." 0.6 s later, the microphone stayed off.
-- `python -m ui --demo`, or the page opened in a browser, plays sample messages with no model, for design work.
+**Tests.** Thirty-nine tests cover the session, the store and the bridge:
 
-Not yet: the spoken path has been tested with a fake voice loop, not with a live microphone; the window has been run on Windows only.
+- the events arrive in order, and only one reply is written at a time;
+- a model that fails to load or fails half way, and a store that fails, are reported without stopping the conversation;
+- the session never opens the microphone, and the microphone and a typed reply never share the model;
+- what is saved, and how it is saved;
+- reopening a chat, for a model that is loaded and for one still loading;
+- switching is refused while busy, and only the chat being written cannot be deleted;
+- deleted text is gone from the file, and a long reopened chat is cut;
+- the page sees only the bridge's calls and is opened by a plain file address.
+
+**The real window, driven through its own page**, with the 4B model the planner chose, in Turkish, with the history in a temporary folder:
+
+- The model loaded in 25 s.
+- A request for a Sieve of Eratosthenes function came back complete, in a code block, in 7.8 s (1196 characters). Before, the spoken budget cut a reply at 160 tokens.
+- "Kaç tane modun var?" was answered with the three modes and the current one.
+- A new chat, then reopening the first one: its two messages came back. "What is the time complexity of this function?" was answered as O(n log log n), so the model had the reopened history.
+- Both chats were in the file with 4 and 2 messages.
+
+**Things found and fixed along the way:**
+
+- Nothing could be selected or copied, because pywebview turns text selection off unless `text_select=True`.
+- `python -m ui --demo` had never worked. WebView2 read `index.html?demo=1` as a file name and showed "File not found". The page is now opened by a plain file address and asks the bridge for its settings.
+
+**Without a model.** `python -m ui --demo`, or the page opened in a browser, plays sample chats with no model, for design work. Every control works there: open, new chat, rename, pin, delete, copy, language, and the narrow layout.
+
+**Not yet:**
+
+- The spoken path has been tested with a fake voice loop, not with a live microphone.
+- The window has been run on Windows only.
+- Projects, context and the code panel are still to come.
+- The VRAM planner reserves room for speech recognition even though the window only loads it when the microphone is pressed, so with about 6.7 GB free it picks the 4B model.
