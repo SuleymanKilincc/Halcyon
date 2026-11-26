@@ -270,3 +270,24 @@ def test_a_folder_search_with_many_matches_names_where_the_rest_are(project):
         (project / f"notes_{i}.txt").write_text("retry\n" * 20, encoding="utf-8")
     text = search("retry", project)
     assert "... and" in text and "more in:" in text and "notes_4.txt (20)" in text
+
+
+def test_a_log_is_read_from_its_end_by_default(project):
+    """Read from the start, the 9B model invented the last error of a log whose first page had none."""
+    text = read_window(project / "logs" / "server.log", start_line=0)
+    assert "2951| 2026-11-20 ERROR disk quota exceeded" in text and "3000|" in text
+    assert "Only the last lines are shown" in text and "start_line=1" in text
+    assert "1| " not in text.splitlines()[1]
+
+
+def test_asking_for_line_1_of_a_log_still_gives_its_start(project):
+    assert read_window(project / "logs" / "server.log", start_line=1).splitlines()[1].startswith("1| ")
+
+
+def test_other_files_start_at_the_top_by_default(project):
+    assert "1| # Weatherline" in read_window(project / "README.md", start_line=0)
+
+
+def test_a_partial_window_says_not_to_answer_about_the_rest(project):
+    (project / "big.txt").write_text("".join(f"line {i}\n" for i in range(5000)), encoding="utf-8")
+    assert "say nothing about the rest from this part" in read_window(project / "big.txt", start_line=0)

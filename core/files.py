@@ -60,6 +60,9 @@ SKIP_DIRS = frozenset({
     ".pytest_cache", ".ruff_cache", ".tox", ".idea", ".vscode", "site-packages", ".cache",
 })
 DOCUMENT_SUFFIXES = frozenset({".pdf", ".docx"})
+# What matters in a log is the latest; read from the start, the 9B model invented the "last
+# error" of a log whose first page had none (measured). A log is shown from its end by default.
+LOG_SUFFIXES = frozenset({".log", ".out", ".err"})
 BINARY_SUFFIXES = frozenset({
     ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".ico", ".webp", ".tif", ".tiff", ".psd",
     ".mp3", ".wav", ".ogg", ".flac", ".m4a", ".mp4", ".mkv", ".avi", ".mov", ".webm",
@@ -255,8 +258,11 @@ def read_window(path: Path, start_line: int = 1, end_line: int = 0) -> str:
     Part of a file with line numbers, never more than WINDOW_CHARS of it.
 
     start_line counts from 1; a negative start_line counts from the end (-50: the last 50
-    lines). end_line 0 means "as far as fits". A file that fits whole is returned whole.
+    lines); 0 means the default: the start, or the end for a log. end_line 0 means "as far as
+    fits". A file that fits whole is returned whole.
     """
+    if start_line == 0:
+        start_line = -200 if path.suffix.lower() in LOG_SUFFIXES and not end_line else 1
     name = path.name
     suffix = path.suffix.lower()
     try:
@@ -325,8 +331,13 @@ def _window(name: str, about: str, lines: Iterator[str], start_line: int, end_li
     if shown_first == 1 and shown_last == total:
         return f"{name} ({about}, {total} lines):\n{body}"
     # A negative start_line shows as many of the last lines as fit, so the suggestion is generous.
-    footer = (f"[Lines {shown_first}-{shown_last} of {total}. Another part: start_line=<line>; the end of the "
-              f"file: start_line=-200. To find something specific, search the file instead of reading all of it.]")
+    if tail:
+        footer = (f"[Only the last lines are shown: {shown_first}-{shown_last} of {total}. Earlier lines are not "
+                  f"shown here; the start: start_line=1. To find something specific, search the file.]")
+    else:
+        footer = (f"[Only lines {shown_first}-{shown_last} of {total} are shown; say nothing about the rest from "
+                  f"this part. Another part: start_line=<line>; the end of the file: start_line=-200. To find "
+                  f"something specific, search the file instead of reading all of it.]")
     return f"{name} ({about}): lines {shown_first}-{shown_last} of {total}\n{body}\n{footer}"
 
 

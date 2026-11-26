@@ -139,13 +139,13 @@ def execute_terminal_command(command: str) -> str:
 # ============================================================================
 
 @tool
-def read_file(file_path: str, start_line: int = 1, end_line: int = 0) -> str:
+def read_file(file_path: str, start_line: int = 0, end_line: int = 0) -> str:
     """
-    Read a file: text, code, a log, a PDF or a Word document. A long file comes back one part at a time with line numbers: pass start_line to read another part, or start_line=-50 for its last 50 lines (the end of a log). To find something in a long file, use search_files instead of reading all of it.
+    Read a file: text, code, a log, a PDF or a Word document. A long file comes back one part at a time with line numbers, a log from its end; pass start_line to read another part (1 is the start, -50 the last 50 lines). To find something in a long file, use search_files instead of reading all of it.
 
     Args:
         file_path: Path to the file (absolute, or relative to the workspace)
-        start_line: First line to show; a negative number counts from the end
+        start_line: First line to show; negative counts from the end; 0 (default) is the start, or the end of a log
         end_line: Last line to show; 0 shows as much as fits
 
     Returns:
@@ -157,7 +157,7 @@ def read_file(file_path: str, start_line: int = 1, end_line: int = 0) -> str:
         path, note = files.resolve(file_path, config.get_workspace_path(), want="file")
         if path is None:
             return f"❌ {note}"
-        text = files.read_window(path, int(start_line or 1), int(end_line or 0))
+        text = files.read_window(path, int(start_line or 0), int(end_line or 0))
         return f"{note}\n{text}" if note else text
     except Exception as e:
         return f"❌ Error reading file: {str(e)}"
