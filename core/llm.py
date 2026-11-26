@@ -251,9 +251,26 @@ def announces_action(text: str) -> bool:
     return deferral(text) is not None
 
 
+# Places named in words. Measured in the first window session: "Masaüstümde neler var?" was answered
+# with "Masaüstünüzdeki dosyaları kontrol edeyim mi?" and nothing else.
+# Only a place the user means ("my desktop", "masaüstümde", "bu klasör"), not the word: "What is
+# a folder?" answered with an offer must not become a file listing (found in review).
+_PLACE_IN_TEXT = re.compile(
+    r"\b(?:my|this|that)\s+(?:desktop|documents|downloads|folder|directory|files?|project|computer)\b"
+    r"|\bon\s+(?:the|my)\s+desktop\b|\bin\s+(?:the|my)\s+(?:documents|downloads)\b"
+    r"|masaüstüm\w*|masaüstünde\w*|belgelerim\w*|indirilenler\w*|klasörüm\w*|dosyam\w*"
+    r"|\bbu\s+(?:klasör|dosya)\w*|bilgisayarım\w*",
+    re.IGNORECASE)
+
+
 def mentions_path(text: str) -> bool:
     """Does the user's message name a file or a folder (a path, or a file name with its extension)?"""
     return bool(_PATH_IN_TEXT.search(text or ""))
+
+
+def mentions_place(text: str) -> bool:
+    """A path, or a place on the computer named in words (my desktop, the documents folder)."""
+    return mentions_path(text) or bool(_PLACE_IN_TEXT.search(text or ""))
 
 
 # How many past turns to carry. Each turn is a user message plus an assistant
@@ -539,7 +556,7 @@ class SpeechLLM:
                 reply = "".join(assistant_text)
                 kind = deferral(reply) if reply.strip() else "announce"
                 if not tool_calls:
-                    acts_on_something = bool(self.last_tool_calls) or mentions_path(prompt)
+                    acts_on_something = bool(self.last_tool_calls) or mentions_place(prompt)
                     can_nudge = not final and self._tools_enabled and self._tool_specs
                     if can_nudge and nudges < MAX_NUDGES and (
                             kind == "announce" or (kind == "offer" and acts_on_something)):

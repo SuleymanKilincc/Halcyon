@@ -1,63 +1,31 @@
-cd /d "%~dp0"
 @echo off
-REM Halcyon AI Agent GUI Launcher for Windows
-REM This script starts the Halcyon GUI with voice capabilities
+REM Halcyon in a window (python -m ui). Extra arguments are passed on, for example --demo.
+setlocal
+cd /d "%~dp0"
+title Halcyon
 
-echo ========================================
-echo   HALCYON GUI LAUNCHER
-echo   Iron Man Interface Edition
-echo ========================================
-echo.
-
-REM Check if Python is installed
 python --version >nul 2>&1
 if errorlevel 1 (
-    echo ERROR: Python is not installed or not in PATH
-    echo Please install Python 3.8 or higher
+    echo ERROR: Python is not installed or not on PATH.
     pause
     exit /b 1
 )
 
-REM Check if virtual environment exists
-if exist "venv\Scripts\activate.bat" (
-    echo Activating virtual environment...
-    call venv\Scripts\activate.bat
-) else (
-    echo WARNING: No virtual environment found
-    echo.
-)
+if exist "venv\Scripts\activate.bat" call "venv\Scripts\activate.bat"
 
-REM Check if dependencies are installed
-python -c "import customtkinter" >nul 2>&1
+python -c "import webview" >nul 2>&1
 if errorlevel 1 (
-    echo ERROR: GUI dependencies not installed
-    echo Please run: pip install -r requirements.txt
+    echo ERROR: the window needs pywebview. Install the requirements first:
+    echo     pip install -r requirements.txt
     pause
     exit /b 1
 )
 
-REM Check if Ollama is running
 ollama list >nul 2>&1
 if errorlevel 1 (
-    echo WARNING: Ollama is not running or not installed
-    echo Please start Ollama or install it from https://ollama.ai
+    echo WARNING: Ollama is not running or not installed: https://ollama.com
     echo.
-    pause
 )
 
-REM Launch Halcyon GUI
-echo Starting Halcyon GUI...
-echo.
-echo ========================================
-echo   INITIALIZING ARC REACTOR...
-echo ========================================
-echo.
-python gui.py
-
-if errorlevel 1 (
-    echo.
-    echo ========================================
-    echo   ERROR OCCURRED
-    echo ========================================
-    pause
-)
+python -m ui %*
+if errorlevel 1 pause

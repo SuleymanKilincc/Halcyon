@@ -629,3 +629,26 @@ def test_removing_a_think_tag_keeps_the_words_apart(chunks, expected):
 
     strip = ThinkStripper()
     assert "".join(strip.feed(c) for c in chunks) + strip.flush() == expected
+
+
+def test_an_offer_about_a_place_named_in_words_is_sent_back_to_act():
+    """Measured in the first window session: "Masaüstümde neler var?" got only "... kontrol edeyim mi?"."""
+    llm = make_llm([[text("Masaüstünüzdeki dosyaları kontrol edeyim mi?")], [tool_call("shout", word="x")],
+                    [text("Masaüstünde üç klasör var.")]], tools=[shout])
+    reply = "".join(llm.stream("Merhaba, masaüstümde neler var?", language="tr"))
+    assert reply.endswith("Masaüstünde üç klasör var.") and llm.last_tool_calls == ["shout"]
+
+
+
+@pytest.mark.parametrize("question", ["What is a folder?", "Dosya nedir?", "How do files work on Windows?"])
+def test_an_offer_after_a_question_about_folders_in_general_is_left_alone(question):
+    """Only a place the user means counts, not the word (found in review of #5)."""
+    llm = make_llm([[text("A folder holds files. Would you like me to check one?")]], tools=[shout])
+    "".join(llm.stream(question))
+    assert len(llm._client.requests) == 1
+
+
+def test_an_offer_about_my_desktop_in_english_is_sent_back_to_act():
+    llm = make_llm([[text("Shall I check your desktop?")], [tool_call("shout", word="x")], [text("Three folders.")]],
+                   tools=[shout])
+    assert "".join(llm.stream("What is on my desktop?")).endswith("Three folders.")
