@@ -339,3 +339,15 @@ def test_an_event_emitted_while_the_page_catches_up_comes_after_the_ones_it_was_
     time.sleep(0.3)
     order = [s.split('"state": "')[1].split('"')[0] for s in bridge._window.scripts]
     assert order == ["loading", "ready", "thinking"]
+
+
+def test_the_page_is_told_which_whisper_the_microphone_got():
+    def voice_loop(handler, events):
+        assistant.describe["speech"] = "small"
+        return FakeVoiceLoop(handler, events)
+
+    session, events, assistant = make(voice_loop=voice_loop)
+    assert session.mic_on()
+    wait_for(events, "info", count=2)
+    assert [e for e in events if e["type"] == "info"][-1]["speech"] == "small"
+    session.mic_off()

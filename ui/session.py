@@ -50,36 +50,49 @@ class Assistant:
 
 
 def build_assistant() -> Assistant:
-    """The real assistant, built the way `python -m voice.cli --llm` builds it."""
+    """
+    The real assistant, built the way `python -m voice.cli --llm` builds it, except that the model
+    is chosen for typing first: Whisper loads only when the microphone is pressed, so the window
+    takes a larger language model with the small Whisper over a smaller one with the large
+    Whisper, and uses the large Whisper anyway when it fits at that moment (core/vram.py).
+    """
+    from dataclasses import replace
+
     from core.fit import fit_to_gpu
     from core.hardware import detect
     from core.llm import check_model_available, installed_models
     from core.profiles import apply_to_voice_settings, resolve
     from core.voice_tools import get_voice_tools
+    from core.vram import TYPING_LADDER, query_free_vram_gib, speech_model_now
     from voice.cli import make_llm_handler
     from voice.settings import DEFAULT
 
     hardware = detect()
     installed = installed_models()
-    profile = resolve(hardware, None, installed=installed)
+    profile = resolve(hardware, None, installed=installed, typing=True)
     available, problem = check_model_available(profile)
     if not available:
         raise RuntimeError(problem)
     llm, handler, controller = make_llm_handler(profile, get_voice_tools(), modes=True, spoken=False,
                                                 hardware=hardware, installed=installed)
-    profile = fit_to_gpu(llm, profile, installed)
+    profile = fit_to_gpu(llm, profile, installed, ladder=TYPING_LADDER)
     if controller is not None:
         controller.rebase()
+    describe = {"model": profile.llm_model, "hardware": hardware.gpu_name or "no GPU"}
 
     def make_voice_loop(voice_handler: Any, events: Any) -> Any:  # noqa: ANN401
         from voice.pipeline import VoiceLoop
 
-        return VoiceLoop(voice_handler, apply_to_voice_settings(profile, DEFAULT, hardware), events)
+        speech = profile.stt_model
+        if profile.stt_device == "cuda":
+            measured = query_free_vram_gib()
+            speech = speech_model_now(profile.stt_model, measured[0] if measured else None)
+        describe["speech"] = speech
+        settings = apply_to_voice_settings(replace(profile, stt_model=speech), DEFAULT, hardware)
+        return VoiceLoop(voice_handler, settings, events)
 
-    gpu = hardware.gpu_name or "no GPU"
     return Assistant(llm=llm, handler=handler, controller=controller, profile=profile, hardware=hardware,
-                     make_voice_loop=make_voice_loop,
-                     describe={"model": profile.llm_model, "hardware": gpu})
+                     make_voice_loop=make_voice_loop, describe=describe)
 
 
 class Session:
@@ -257,6 +270,8 @@ class Session:
         with self._lock:
             self._voice, self._mic_starting = loop, False
         self.emit({"type": "mic", "on": True})
+        if "speech" in assistant.describe:       # which Whisper the microphone got, for the page
+            self.emit({"type": "info", **assistant.describe, "mode": self._mode()})
         self.emit({"type": "state", "state": "loading", "detail": "Loading the speech models"})
         self._voice_thread = threading.Thread(target=self._run_voice, args=(loop,), name="halcyon-ui-voice",
                                               daemon=True)
