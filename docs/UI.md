@@ -37,6 +37,7 @@ The direction is a workspace in the spirit of Claude Code and Cursor, with Halcy
 
 - **The microphone opens only when you press its button.** Nothing else in the window or the session opens it.
 - **One conversation at a time.** While a reply is being written, or while the microphone is on, the message box is off. Otherwise the voice loop and a typed message would use the model at once.
+- **The model is chosen for typing first.** With about 6.7 GB free, the window runs the 9B model and, when the microphone is pressed, the small Whisper (or the large one when it fits at that moment); the meta line under the message box names it. The measurements behind this are in docs/VOICE.md, "The window plans for typing first".
 - **Typed messages get the typed setup and spoken ones the spoken setup.**
   - Typed: a written prompt that allows code blocks and longer answers, 1200 tokens for a reply, and 8 tool rounds.
   - Spoken: two sentences, no symbols, the profile's short budget, and 4 tool rounds.
@@ -84,4 +85,3 @@ The direction is a workspace in the spirit of Claude Code and Cursor, with Halcy
 - The spoken path has been tested with a fake voice loop, not with a live microphone.
 - The window has been run on Windows only.
 - Projects, context and the code panel are still to come.
-- The VRAM planner reserves room for speech recognition even though the window only loads it when the microphone is pressed, so with about 6.7 GB free it picks the 4B model.
