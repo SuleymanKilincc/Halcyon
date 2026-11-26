@@ -65,7 +65,7 @@ Before, five tasks failed for **every** model and every seed, the 26B one includ
 | e4b | 10 | 31 | 37 | 32 | 34 |
 | 26B | 18 | 44 | 45 | 45 | 44 |
 
-Changes of up to about five between rounds are as much sampling as code (the 9B model went from 37 to 32 and back with fixes that could not have lowered it); the step from *before* to any round is far larger than that.
+After the fixes for Qodo's review of this work, a check run gave 39 (typed) and 38 (spoken) for the 9B model: inside that range, with no think tags in any reply. Changes of up to about five between rounds are as much sampling as code (the 9B model went from 37 to 32 and back with fixes that could not have lowered it); the step from *before* to any round is far larger than that.
 
 ## What was wrong, and what changed
 
