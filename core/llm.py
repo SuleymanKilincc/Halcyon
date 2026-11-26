@@ -119,6 +119,15 @@ FINAL_ROUND_NOTE = ("You have used all the tool calls for this request. Answer n
 ACT_NOW_NOTE = ("You said you would do something, or asked whether to, but did not call a tool. Reading, "
                 "listing and searching never need permission. Call the tool now instead of saying it again.")
 MAX_NUDGES = 2       # measured: the 9B model announced again after one nudge in Turkish
+SEARCH_FIRST_NOTE = ("This request is about something that changes over time. Search the web first and "
+                     "answer from what it returns; do not answer from memory.")
+
+# Questions whose answer changes: measured, the 9B model said "there is no such library" about a
+# library's latest release without searching. Such a question is sent back once to search.
+_TIME_SENSITIVE = re.compile(
+    r"\b(?:latest|newest|most recent|current version|today|this week|news|prices?|right now)\b"
+    r"|en son|en yeni|son sürüm|güncel|bugün|bu hafta|haber|fiyat",
+    re.IGNORECASE)
 
 # What a tool is refused with, when web content tried to reach a local file (see _guard).
 WEB_THEN_LOCAL_NOTE = ("Not done: this request has read web content, and after that a local file or folder "
@@ -134,7 +143,8 @@ _ANNOUNCES = re.compile(
     # "... mı?" after it makes it a question, which is an offer (below), not an announcement.
     r"|(?:bakayım|bakacağım|okuyayım|okuyacağım|açayım|açacağım|kontrol edeyim|kontrol edeceğim|arayayım"
     r"|arayacağım|bulacağım|inceleyeyim|inceleyeceğim|listeleyeyim|listeleyeceğim|göz atayım|göz atacağım"
-    r"|araştırayım|araştıracağım|araması yapayım|araması yapacağım)(?!\s*m[ıi]\b)",
+    r"|araştırayım|araştıracağım|araması yapayım|araması yapacağım|bulayım|göstereyim|tarayayım)"
+    r"(?!\s*m[ıi]\b)",
     re.IGNORECASE)
 
 # Offering, asking leave, or saying it could: a reason only when the request is about something
@@ -456,6 +466,8 @@ class SpeechLLM:
         note = ""          # an instruction for one round only: act now, or answer now
         nudges = 0
         web_read = False   # web content has entered this turn (see _guard)
+        needs_search = bool(_TIME_SENSITIVE.search(prompt or "")) and "search_web" in self._tools
+        searched_nudge = False
         self.last_rounds = 0
         try:
             # Bounded so one confused turn cannot spin forever while the user sits in silence
@@ -479,6 +491,11 @@ class SpeechLLM:
                     yield " "
 
                 round_system = turn_system + ("\n" + note if note else "")
+                # A round that follows a nudge, or that may be sent back to search, is held until
+                # it ends: the 9B model repeated "Dosyayı okuyarak tarihini bulacağım." three times
+                # after being nudged, and the voice would have said it three times.
+                held = bool(note in (ACT_NOW_NOTE, SEARCH_FIRST_NOTE)) or (
+                    round_index == 0 and needs_search)
                 note = ""
                 messages = self._fit_context(self._history, round_system, use_tools=not final)
                 self.last_rounds += 1
@@ -490,27 +507,30 @@ class SpeechLLM:
                         text = strip.feed(message.get("content", "") or "")
                         if text:
                             assistant_text.append(text)
-                            spoken.append(text)
-                            yield text
+                            if not held:
+                                spoken.append(text)
+                                yield text
                         if not final:
                             for call in message.get("tool_calls") or []:
                                 tool_calls.append(call)
                     rest = strip.flush()
                     if rest:
                         assistant_text.append(rest)
-                        spoken.append(rest)
-                        yield rest
+                        if not held:
+                            spoken.append(rest)
+                            yield rest
                 finally:
                     close = getattr(response, "close", None)
                     if close is not None:
                         close()
 
+                reply = "".join(assistant_text)
+                kind = deferral(reply) if reply.strip() else "announce"
                 if not tool_calls:
-                    reply = "".join(assistant_text)
-                    kind = deferral(reply) if reply.strip() else "announce"
                     acts_on_something = bool(self.last_tool_calls) or mentions_path(prompt)
-                    if (not final and nudges < MAX_NUDGES and self._tools_enabled and self._tool_specs
-                            and (kind == "announce" or (kind == "offer" and acts_on_something))):
+                    can_nudge = not final and self._tools_enabled and self._tool_specs
+                    if can_nudge and nudges < MAX_NUDGES and (
+                            kind == "announce" or (kind == "offer" and acts_on_something)):
                         # "Let me check the other files." and then nothing, nothing at all, or
                         # "shall I read it?" about a file the user named: send it back to do it.
                         # The announcement is not stored: two assistant messages in a row made
@@ -518,12 +538,35 @@ class SpeechLLM:
                         nudges += 1
                         note = ACT_NOW_NOTE
                         continue
+                    if can_nudge and needs_search and not searched_nudge and not web_read:
+                        # Answered from memory something that changes: once, search first.
+                        searched_nudge = True
+                        note = SEARCH_FIRST_NOTE
+                        continue
+                    if held and (kind is not None or not reply.strip()):
+                        # Still only announcing after being sent back: do not say it again.
+                        reply = ""
                     self._history.append({"role": "assistant", "content": reply})
+                    if reply.strip() and held:
+                        if spoken and not spoken[-1].endswith((" ", "\n")):
+                            spoken.append(" ")
+                            yield " "
+                        spoken.append(reply)
+                        yield reply
                     if not reply.strip() and not "".join(spoken).strip():
                         # An empty answer is never shown as an answer (measured once on the
                         # 26B model, after nine rounds of searching).
                         yield GIVE_UP.get(language or "", GIVE_UP["en"])
+                    elif not reply.strip() and held:
+                        yield " " + GIVE_UP.get(language or "", GIVE_UP["en"])
                     return
+                if held and reply.strip() and kind is None:
+                    # Held text before a tool call that is more than "let me check": say it.
+                    if spoken and not spoken[-1].endswith((" ", "\n")):
+                        spoken.append(" ")
+                        yield " "
+                    spoken.append(reply)
+                    yield reply
 
                 self._history.append({
                     "role": "assistant",

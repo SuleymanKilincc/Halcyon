@@ -510,3 +510,52 @@ def test_a_nudge_never_leaves_two_replies_in_a_row_in_the_history():
     assert all(not (a == b == "assistant") for a, b in zip(roles, roles[1:])), roles
     second = [m["role"] for m in llm._client.requests[1]["messages"][1:]]
     assert second == ["user"]                                   # the nudge round starts from the question
+
+
+# ------------------------------------------------------------------ found in the third measured round
+
+def test_an_announcement_repeated_after_nudges_is_said_once_and_then_admitted():
+    """Measured: "Dosyayı okuyarak toplantı tarihini bulacağım." three times in one reply."""
+    same = "Dosyayı okuyarak toplantı tarihini bulacağım."
+    llm = make_llm([[text(same)], [text(same)], [text(same)]], tools=[shout])
+    reply = "".join(llm.stream("C:/docs/meeting.docx toplantı hangi gün?", language="tr"))
+    assert reply.count(same) == 1
+    assert reply.endswith("Bunu tamamlayamadım efendim.")
+
+
+def test_a_nudged_round_that_answers_is_said():
+    llm = make_llm([[text("Let me check the file.")], [text("The file says 42.")]], tools=[shout])
+    assert "".join(llm.stream("What is in C:/data/x.txt?")) == "Let me check the file. The file says 42."
+
+
+@tool
+def search_web(query: str) -> str:
+    """Search the web."""
+    return "1. Releases - Zephyrine\n   https://zephyrine.dev/releases\n   3.4.0 is the latest release."
+
+
+def test_a_question_about_something_that_changes_is_sent_back_to_search_when_answered_from_memory():
+    """Measured: "Zephyrine adında bir Python kütüphanesi bulunmuyor." without searching."""
+    llm = make_llm([[text("Zephyrine adında bir kütüphane yok.")], [tool_call("search_web", query="zephyrine")],
+                    [text("En son sürüm 3.4.")]], tools=[search_web])
+    reply = "".join(llm.stream("Zephyrine kütüphanesinin en son sürümü hangisi?", language="tr"))
+    assert reply == "En son sürüm 3.4."                         # the answer from memory was never said
+    from core.llm import SEARCH_FIRST_NOTE
+    assert SEARCH_FIRST_NOTE in llm._client.requests[1]["messages"][0]["content"]
+
+
+def test_a_question_that_searched_by_itself_is_not_sent_back():
+    llm = make_llm([[tool_call("search_web", query="zephyrine")], [text("3.4.")]], tools=[search_web])
+    assert "".join(llm.stream("What is the latest Zephyrine release?")) == "3.4."
+    assert len(llm._client.requests) == 2
+
+
+def test_an_ordinary_question_is_never_held_or_sent_to_search():
+    llm = make_llm([[text("Hello.")]], tools=[search_web])
+    assert "".join(llm.stream("How are you?")) == "Hello."
+    assert len(llm._client.requests) == 1
+
+
+@pytest.mark.parametrize("reply", ["Dosyayı okuyup toplantı tarihini bulayım.", "Önce dosyayı tarayayım."])
+def test_more_turkish_announcements(reply):
+    assert deferral(reply) == "announce"
