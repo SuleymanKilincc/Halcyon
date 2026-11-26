@@ -473,7 +473,9 @@
         break;
       case "info":
         if (event.mode) { modeKey = event.mode; mode.textContent = t(`mode.${modeKey}`); }
-        meta.textContent = [event.model, event.hardware].filter(Boolean).join(" · ");
+        // The speech model is named once the microphone has chosen it (large or small Whisper).
+        meta.textContent = [event.model, event.speech && `Whisper ${event.speech}`, event.hardware]
+          .filter(Boolean).join(" · ");
         if ("history" in event) { historyOn = !!event.history; applyLanguage(); }
         break;
       case "chats":

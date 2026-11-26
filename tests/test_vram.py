@@ -156,3 +156,56 @@ def test_an_unreachable_ollama_counts_as_zero():
 
     # Port 9 (discard) refuses connections; a normal "Ollama is not running" case.
     assert ollama_resident_gib("http://127.0.0.1:9", timeout=0.5) == 0.0
+
+
+# ------------------------------------------------- the window: typing first
+
+from core.vram import TYPING_LADDER, speech_model_now  # noqa: E402
+
+QWEN = {"qwen3.5:9b", "qwen3.5:4b", "qwen3.5:2b"}
+
+
+def test_with_the_memory_the_window_found_typing_gets_the_9b_model_and_the_small_whisper():
+    """Measured: 6.7 GB free with the desktop open. 9B + large Whisper missed by 0.05 GB."""
+    assert choose(6.7, QWEN)[0].name == "gpu-4b-8k"                            # speaking first
+    assert choose(6.7, QWEN, TYPING_LADDER)[0].name == "gpu-9b-8k-small"       # typing first
+
+
+def test_typing_still_takes_the_large_whisper_when_it_fits():
+    """7.1 GB was the usual free memory: the window kept the large Whisper, and still does."""
+    assert choose(7.1, QWEN, TYPING_LADDER)[0].name == "gpu-9b-8k"
+
+
+def test_typing_never_trades_the_large_whisper_for_a_longer_context():
+    for free in [x / 10 for x in range(30, 200)]:
+        plan = choose(free, QWEN, TYPING_LADDER)[0]
+        voice = choose(free, QWEN)[0]
+        if plan and voice and plan.llm_model == voice.llm_model:
+            assert plan == voice, free
+
+
+def test_the_typing_ladder_keeps_every_voice_rung_in_order():
+    names = [p.name for p in TYPING_LADDER]
+    assert [n for n in names if n in {p.name for p in LADDER}] == [p.name for p in LADDER]
+    assert len(names) == len(set(names))
+    assert all(p.name in PLANS_BY_NAME for p in TYPING_LADDER)
+
+
+def test_a_typing_plan_that_spills_steps_to_the_small_whisper_before_a_smaller_model():
+    assert step_down(PLANS_BY_NAME["gpu-9b-16k"], QWEN, TYPING_LADDER).name == "gpu-9b-8k"
+    assert step_down(PLANS_BY_NAME["gpu-9b-8k"], QWEN, TYPING_LADDER).name == "gpu-9b-8k-small"
+    assert step_down(PLANS_BY_NAME["gpu-9b-8k-small"], QWEN).name == "gpu-4b-8k"
+    assert step_down(PLANS_BY_NAME["gpu-9b-16k"], QWEN).name == "gpu-9b-8k"        # voice: unchanged
+
+
+@pytest.mark.parametrize("free, expected", [
+    (WHISPER_GIB["large-v3-turbo"] + HEADROOM_GIB, "large-v3-turbo"),
+    (WHISPER_GIB["large-v3-turbo"] + HEADROOM_GIB - 0.01, "small"),
+    (None, "small"),
+])
+def test_the_microphone_gets_the_large_whisper_only_when_it_fits_beside_the_loaded_model(free, expected):
+    assert speech_model_now("small", free) == expected
+
+
+def test_a_plan_with_the_large_whisper_keeps_it():
+    assert speech_model_now("large-v3-turbo", 0.1) == "large-v3-turbo"

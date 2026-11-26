@@ -260,6 +260,32 @@ The language model is loaded and checked before Whisper, so a step down can stil
 
 The profile can be forced with `--profile` (`auto`, `battery`, or any configuration name such as `gpu-4b-8k`) or the `HALCYON_PROFILE` environment variable.
 
+### The window plans for typing first
+
+The ladder above is for the voice loop, where every turn is spoken. In the window (`python -m ui`), most turns are typed, and Whisper is loaded only when the microphone is pressed. With 6.7 GiB free (the window, Chrome and an editor open), the voice ladder gave the 4B model with the large Whisper: 9B + large missed by 0.05 GiB.
+
+The question was whether to keep the 9B model and give up something on speech. `python -m bench.stt_eval` on the 8 GB card measured Turkish word error rate (clean / far / noisy, synthesised speech) and the median time per sentence:
+
+| Whisper | Where | Per sentence | Turkish WER |
+|---|---|---|---|
+| large-v3-turbo | GPU | 440 ms | 8% / 22% / 75% |
+| large-v3-turbo | CPU, 8 threads | 13 535 ms | 8% / 29% / 74% |
+| small | GPU | 203 ms | 8% / 48% / 101% |
+| small | CPU | 2 844 ms | 8% / 50% / 99% |
+| base | CPU | 923 ms | 35% / 92% / 115% |
+
+English stayed at 0–1.4% on clean and far speech for the large and small models. On the CPU, `voice/stt.py` replaces a large model with `base` (the warning says so), so the large model had to be forced with `HALCYON_STT_MODEL` to be measured there.
+
+The large Whisper on the CPU is no option: thirteen seconds per sentence. So the window uses `TYPING_LADDER`. For each language model it tries the voice rungs first, then the same rungs with the small Whisper, and only then a smaller model. The small Whisper is used to keep the larger model, never to get a longer context: where the large Whisper fits beside a model, it is kept, and a test checks that for every amount of free memory from 3 to 20 GiB. When the microphone is pressed, `speech_model_now` reads the free memory again and takes the large Whisper if it fits beside the loaded model. A step down after a spill only moves to a configuration that needs less memory.
+
+Checked on the 8 GB card with 6.65 GiB free:
+
+- **The plan.** It chose `gpu-9b-8k-small`, and the 9B model loaded 100% on the GPU.
+- **Free memory after loading.** 0.44 GiB was left, so the microphone got the small Whisper.
+- **With Whisper loaded beside it.** The 9B model stayed 100% on the GPU, and Turkish sentences were transcribed in 0.2–0.6 s.
+- **Transcription quality.** On five clean Turkish sentences, both Whispers misheard one word in two of them, in different places.
+- **Reply speed.** Typed replies from the 9B model took 1.0–1.9 s, against 0.7–1.2 s for the 4B model, with the first word after about 0.13 s for both once warm.
+
 ### GPU speech recognition needs PyTorch's CUDA libraries
 
 faster-whisper (CTranslate2) does not ship cuBLAS or cuDNN; on Windows it finds them only if they are already loaded in the process. PyTorch's CUDA build bundles them and loads them on import. For a long time GPU transcription worked only because some other module happened to import torch first — measuring Whisper on its own failed with *"cublas64_12.dll is not found"*. `voice/stt.py` now imports torch explicitly before loading Whisper on the GPU.

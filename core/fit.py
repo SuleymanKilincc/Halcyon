@@ -18,7 +18,7 @@ from collections.abc import Callable
 from typing import Protocol
 
 from core.profiles import Profile, profile_from_plan
-from core.vram import PLANS_BY_NAME, step_down
+from core.vram import PLANS_BY_NAME, Plan, step_down
 
 # Ollama reports sizes rounded to whole bytes of differently-sized buffers; a
 # model whose GPU share is within a hair of the total is fully on the GPU.
@@ -33,7 +33,7 @@ class Placeable(Protocol):
 
 
 def fit_to_gpu(llm: Placeable, profile: Profile, installed: set[str] | None = None,
-               log: Callable[[str], None] = print) -> Profile:
+               log: Callable[[str], None] = print, ladder: tuple[Plan, ...] | None = None) -> Profile:
     """
     Verify placement after warm-up; step down until the model fits.
 
@@ -57,7 +57,7 @@ def fit_to_gpu(llm: Placeable, profile: Profile, installed: set[str] | None = No
             return profile
 
         log(f"Placement: only {share:.0%} on the GPU - part of the model spilled onto the CPU")
-        lower = step_down(plan, installed)
+        lower = step_down(plan, installed, ladder)
         if lower is None:
             log("  no smaller configuration is available; continuing with the spill")
             return profile
