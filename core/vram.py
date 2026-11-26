@@ -110,14 +110,41 @@ LADDER: tuple[Plan, ...] = (
     Plan("qwen3.5:2b", 4096, "base"),
 )
 
-PLANS_BY_NAME = {p.name: p for p in LADDER}
+def _typing_first(ladder: tuple[Plan, ...]) -> tuple[Plan, ...]:
+    """
+    For each language model, its rungs as they are, then the same rungs with the small Whisper,
+    then the next smaller model. The small Whisper is what keeps the larger model, not a way to
+    a longer context: where the large Whisper fits beside a model, it is kept.
+    """
+    seen: dict[str, Plan] = {}
+    models = list(dict.fromkeys(p.llm_model for p in ladder))
+    for model in models:
+        rungs = [p for p in ladder if p.llm_model == model]
+        smaller = [Plan(p.llm_model, p.num_ctx, "small") for p in rungs if p.stt_model == "large-v3-turbo"]
+        for plan in rungs + smaller:
+            seen.setdefault(plan.name, plan)
+    return tuple(seen.values())
+
+
+# For the window, where most turns are typed and Whisper is loaded only when the microphone is
+# pressed: a larger language model is worth more than the large Whisper, so each model is tried
+# with the small one before a smaller model is (never for a longer context). Measured with bench/stt_eval.py on the development
+# machine (docs/MODEL_SELECTION.md): with 6.7 GB free, the voice ladder gave the 4B model with
+# the large Whisper (9B + large missed by 0.05 GB); this one gives the 9B model with the small
+# Whisper, which is as accurate on clear Turkish speech (8% WER) and faster (0.20 s against
+# 0.44 s per sentence), but worse from across a room (48% against 22%). The large Whisper on
+# the CPU was no way out: 13.5 s per sentence.
+TYPING_LADDER: tuple[Plan, ...] = _typing_first(LADDER)
+
+PLANS_BY_NAME = {p.name: p for p in TYPING_LADDER}
 
 
 def fits(plan: Plan, free_gib: float) -> bool:
     return plan.needed_gib + HEADROOM_GIB <= free_gib
 
 
-def choose(free_gib: float, installed: set[str] | None = None) -> tuple[Plan | None, Plan | None]:
+def choose(free_gib: float, installed: set[str] | None = None,
+           ladder: tuple[Plan, ...] = LADDER) -> tuple[Plan | None, Plan | None]:
     """
     Return (plan to use, best plan the card could run).
 
@@ -126,24 +153,41 @@ def choose(free_gib: float, installed: set[str] | None = None) -> tuple[Plan | N
     the best plan ignoring what is installed; when it differs, the caller can
     suggest pulling a better model. Either is None when nothing fits.
     """
-    best_possible = next((p for p in LADDER if fits(p, free_gib)), None)
+    best_possible = next((p for p in ladder if fits(p, free_gib)), None)
     if installed is None:
         return best_possible, best_possible
-    usable = next((p for p in LADDER if fits(p, free_gib) and p.llm_model in installed), None)
+    usable = next((p for p in ladder if fits(p, free_gib) and p.llm_model in installed), None)
     return usable, best_possible
 
 
-def step_down(current: Plan, installed: set[str] | None = None) -> Plan | None:
+def step_down(current: Plan, installed: set[str] | None = None,
+              ladder: tuple[Plan, ...] | None = None) -> Plan | None:
     """
     The next rung below `current` whose language model is installed.
 
     Used after a spill. The language model is loaded and checked before
     Whisper, so the speech model can still change at that point too.
     """
-    for plan in LADDER[LADDER.index(current) + 1:]:
-        if installed is None or plan.llm_model in installed:
+    if ladder is None:
+        ladder = LADDER if current in LADDER else TYPING_LADDER
+    for plan in ladder[ladder.index(current) + 1:]:
+        # Down means less memory: in the typing ladder the small-Whisper rungs of a model come
+        # after its 8k rung but can need more (a 32k context), which would spill again.
+        if plan.needed_gib < current.needed_gib and (installed is None or plan.llm_model in installed):
             return plan
     return None
+
+
+def speech_model_now(planned: str, free_gib: float | None) -> str:
+    """
+    The Whisper to load when the microphone is pressed, beside a language model that is already
+    loaded: the large one when it fits in what is free right now, otherwise the one planned.
+    Free memory that cannot be read keeps the plan.
+    """
+    large = "large-v3-turbo"
+    if planned == large or free_gib is None:
+        return planned
+    return large if WHISPER_GIB[large] + HEADROOM_GIB <= free_gib else planned
 
 
 def query_free_vram_gib() -> tuple[float, float] | None:

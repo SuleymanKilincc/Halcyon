@@ -22,7 +22,7 @@ import os
 from dataclasses import dataclass, replace
 
 from core.hardware import Hardware, detect
-from core.vram import DEFAULT_RESERVED_GIB, LADDER, PLANS_BY_NAME, Plan, choose
+from core.vram import DEFAULT_RESERVED_GIB, LADDER, PLANS_BY_NAME, TYPING_LADDER, Plan, choose
 
 
 @dataclass(frozen=True)
@@ -113,7 +113,7 @@ PROFILES: dict[str, Profile] = {
 
 
 def resolve(hardware: Hardware | None = None, override: str | None = None,
-            installed: set[str] | None = None) -> Profile:
+            installed: set[str] | None = None, typing: bool = False) -> Profile:
     """
     Pick the profile this machine should run.
 
@@ -150,7 +150,9 @@ def resolve(hardware: Hardware | None = None, override: str | None = None,
     else:
         free_note = f"{free:.1f} GB free"
 
-    plan, best = choose(free, installed)
+    # typing=True: the window, where a larger language model beats the large Whisper
+    # (core/vram.py, TYPING_LADDER).
+    plan, best = choose(free, installed, TYPING_LADDER if typing else LADDER)
     if plan is None:
         if best is not None:
             reason = (f"{free_note}, but no model that fits is installed - "

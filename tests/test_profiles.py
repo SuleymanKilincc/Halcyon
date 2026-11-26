@@ -119,3 +119,12 @@ def test_apply_to_voice_settings_copies_the_speech_choices(tmp_path):
     assert settings.stt.device == "cuda"
     assert settings.stt.compute_type_cuda == "int8_float16"
     assert settings.stt.cpu_threads == 6
+
+
+def test_the_window_plans_for_typing_first():
+    """With the 6.7 GB the window found free, typing gets the 9B model and the small Whisper."""
+    installed = {"qwen3.5:9b", "qwen3.5:4b"}
+    assert resolve(gpu(8.0, 6.7), installed=installed).name == "gpu-4b-8k"
+    typed = resolve(gpu(8.0, 6.7), installed=installed, typing=True)
+    assert typed.name == "gpu-9b-8k-small"
+    assert (typed.llm_model, typed.stt_model, typed.stt_device) == ("qwen3.5:9b", "small", "cuda")
