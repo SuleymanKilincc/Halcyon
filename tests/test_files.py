@@ -291,3 +291,11 @@ def test_other_files_start_at_the_top_by_default(project):
 def test_a_partial_window_says_not_to_answer_about_the_rest(project):
     (project / "big.txt").write_text("".join(f"line {i}\n" for i in range(5000)), encoding="utf-8")
     assert "say nothing about the rest from this part" in read_window(project / "big.txt", start_line=0)
+
+
+def test_a_folder_search_says_what_it_skipped_as_too_large(monkeypatch, project):
+    """A document between the text limit and the document limit was skipped without a word (review of #4)."""
+    monkeypatch.setattr(files, "SEARCH_MAX_FILE_BYTES", 100)
+    text = search("MAX_RETRIES", project)
+    assert "MAX_RETRIES = 7" in text
+    assert "too large to search" in text                 # the 3000-line log was skipped, and it says so

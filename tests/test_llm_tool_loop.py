@@ -559,3 +559,73 @@ def test_an_ordinary_question_is_never_held_or_sent_to_search():
 @pytest.mark.parametrize("reply", ["Dosyayı okuyup toplantı tarihini bulayım.", "Önce dosyayı tarayayım."])
 def test_more_turkish_announcements(reply):
     assert deferral(reply) == "announce"
+
+
+# ------------------------------------------------------------------ found in Qodo's review of #4
+
+def test_a_question_about_a_named_file_is_answered_from_the_file_not_sent_to_the_web():
+    llm = make_llm([[tool_call("read_file", file_path="C:/logs/server.log")], [text("Son hata: disk dolu.")]],
+                   tools=[read_file, search_web])
+    assert "".join(llm.stream("C:/logs/server.log dosyasındaki en son hata ne?")) == "Son hata: disk dolu."
+    assert len(llm._client.requests) == 2
+
+
+def test_an_answer_that_ends_with_an_offer_is_kept_after_a_nudge():
+    answer = "The meeting is on Monday. Would you like me to read the rest?"
+    llm = make_llm([[text("Let me check the file.")], [text(answer)], [text(answer)]], tools=[shout])
+    reply = "".join(llm.stream("When is the meeting in C:/x/meeting.txt?"))
+    assert "The meeting is on Monday." in reply and "could not finish" not in reply
+
+
+def test_a_claim_held_with_a_search_is_not_said_before_the_search_answers():
+    llm = make_llm([[text("The latest is 3.2."), tool_call("search_web", query="zephyrine")],
+                    [text("The latest is 3.4.")]], tools=[search_web])
+    assert "".join(llm.stream("What is the latest Zephyrine release?")) == "The latest is 3.4."
+
+
+@tool
+def list_directory(directory_path: str = ".") -> str:
+    """List a folder."""
+    return "LISTED"
+
+
+def test_after_web_content_a_listing_with_no_path_is_refused():
+    llm = make_llm([[tool_call("search_web", query="x")], [tool_call("list_directory")], [text("ok")]],
+                   tools=[search_web, list_directory])
+    "".join(llm.stream("search for x"))
+    assert [m["content"] for m in llm._history if m.get("role") == "tool"][1] == WEB_THEN_LOCAL_NOTE
+
+
+@tool
+def execute_terminal_command(command: str) -> str:
+    """Run a command."""
+    return "RAN"
+
+
+def test_after_web_content_a_command_is_refused_whatever_it_says():
+    llm = make_llm([[tool_call("search_web", query="x")], [tool_call("execute_terminal_command", command="dir")],
+                    [text("ok")]], tools=[search_web, execute_terminal_command])
+    "".join(llm.stream("search for x"))
+    assert [m["content"] for m in llm._history if m.get("role") == "tool"][1] == WEB_THEN_LOCAL_NOTE
+
+
+@pytest.mark.parametrize("path", [
+    "C:/Projects/app/../../Users/me/.ssh/id_rsa",      # climbs out of the named folder
+    "C:/Users/me/secret/notes.txt",                    # same file name, another folder
+])
+def test_after_web_content_a_path_outside_what_the_user_named_is_refused(path):
+    llm = make_llm([[tool_call("search_web", query="x")], [tool_call("read_file", file_path=path)], [text("ok")]],
+                   tools=[search_web, read_file])
+    "".join(llm.stream("Search for x, then read notes.txt in C:/Projects/app"))
+    assert [m["content"] for m in llm._history if m.get("role") == "tool"][1] == WEB_THEN_LOCAL_NOTE
+
+
+@pytest.mark.parametrize("chunks, expected", [
+    (["Hello<think>x</think> world"], "Hello world"),
+    (["Hello<thi", "nk>x</think>", " world"], "Hello world"),
+])
+def test_removing_a_think_tag_keeps_the_words_apart(chunks, expected):
+    from core.llm import ThinkStripper
+
+    strip = ThinkStripper()
+    assert "".join(strip.feed(c) for c in chunks) + strip.flush() == expected

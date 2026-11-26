@@ -206,8 +206,15 @@ class ThinkStripper:
     def __init__(self) -> None:
         self._held = ""
         self._inside = False
+        self._last = ""        # the last character passed on, to keep words apart around a tag
 
     def feed(self, text: str) -> str:
+        result = self._feed(text)
+        if result:
+            self._last = result[-1]
+        return result
+
+    def _feed(self, text: str) -> str:
         data, out = self._held + text, []
         self._held = ""
         while data:
@@ -216,8 +223,11 @@ class ThinkStripper:
                 if end < 0:
                     self._held = data[-(len(self.CLOSE) - 1):]    # a closing tag may be split
                     return "".join(out)
-                data, self._inside = data[end + len(self.CLOSE):].lstrip(), False
-                continue
+                data, self._inside = data[end + len(self.CLOSE):], False
+                before = "".join(out)[-1:] or self._last
+                if not before or before.isspace():
+                    data = data.lstrip()    # "Hello <think></think> world": one space, not two;
+                continue                    # "Hello<think></think> world" keeps its space (review)
             start = data.find(self.OPEN)
             if start >= 0:
                 out.append(data[:start])
@@ -466,7 +476,9 @@ class SpeechLLM:
         note = ""          # an instruction for one round only: act now, or answer now
         nudges = 0
         web_read = False   # web content has entered this turn (see _guard)
-        needs_search = bool(_TIME_SENSITIVE.search(prompt or "")) and "search_web" in self._tools
+        # "The latest error in C:/logs/server.log" is about a file, not about the world (found in review).
+        needs_search = (bool(_TIME_SENSITIVE.search(prompt or "")) and "search_web" in self._tools
+                        and not mentions_path(prompt))
         searched_nudge = False
         self.last_rounds = 0
         try:
@@ -538,13 +550,15 @@ class SpeechLLM:
                         nudges += 1
                         note = ACT_NOW_NOTE
                         continue
-                    if can_nudge and needs_search and not searched_nudge and not web_read:
+                    if (can_nudge and needs_search and not searched_nudge and not web_read
+                            and not self.last_tool_calls):
                         # Answered from memory something that changes: once, search first.
                         searched_nudge = True
                         note = SEARCH_FIRST_NOTE
                         continue
-                    if held and (kind is not None or not reply.strip()):
-                        # Still only announcing after being sent back: do not say it again.
+                    if held and (kind == "announce" or not reply.strip()):
+                        # Still only announcing after being sent back: do not say it again. An
+                        # answer that ends with an offer is an answer (found in review).
                         reply = ""
                     self._history.append({"role": "assistant", "content": reply})
                     if reply.strip() and held:
@@ -560,13 +574,9 @@ class SpeechLLM:
                     elif not reply.strip() and held:
                         yield " " + GIVE_UP.get(language or "", GIVE_UP["en"])
                     return
-                if held and reply.strip() and kind is None:
-                    # Held text before a tool call that is more than "let me check": say it.
-                    if spoken and not spoken[-1].endswith((" ", "\n")):
-                        spoken.append(" ")
-                        yield " "
-                    spoken.append(reply)
-                    yield reply
+                # Text held with a tool call is dropped: in a search-first round it may be a claim
+                # from memory ("the latest is 3.2") that the search is about to contradict, and
+                # the next round answers from the result anyway (found in review).
 
                 self._history.append({
                     "role": "assistant",
@@ -600,6 +610,9 @@ class SpeechLLM:
             return None
         function = call.get("function", {}) or {}
         name = function.get("name", "")
+        if name in REFUSED_AFTER_WEB:
+            # A command line or a download cannot be checked against what the user named.
+            return name, WEB_THEN_LOCAL_NOTE
         if name not in LOCAL_TOOLS:
             return None
         arguments = function.get("arguments", {}) or {}
@@ -609,9 +622,13 @@ class SpeechLLM:
             except json.JSONDecodeError:
                 arguments = {}
         asked = (prompt or "").replace("\\", "/").lower()
-        for key in ("file_path", "directory_path", "path"):
-            value = str(arguments.get(key) or "").strip().replace("\\", "/").lower().rstrip("/")
-            if value and not _named_by_user(value, asked):
+        paths = [str(arguments.get(key) or "").strip() for key in PATH_ARGUMENTS]
+        paths = [p for p in paths if p]
+        if not paths:
+            # No path means the tool's default (the workspace folder), which the user did not name.
+            return name, WEB_THEN_LOCAL_NOTE
+        for value in paths:
+            if not _named_by_user(value.replace("\\", "/").lower(), asked):
                 return name, WEB_THEN_LOCAL_NOTE
         return None
 
@@ -746,19 +763,39 @@ def _to_ollama_tool(tool: Any) -> dict[str, Any]:  # noqa: ANN401
     return spec
 
 
-WEB_TOOLS = frozenset({"search_web", "fetch_webpage", "browse_website_interactive"})
+WEB_TOOLS = frozenset({"search_web", "fetch_webpage", "browse_website_interactive", "download_file"})
 LOCAL_TOOLS = frozenset({"read_file", "list_directory", "search_files", "write_file", "append_to_file",
-                         "delete_file", "extract_archive", "execute_terminal_command"})
+                         "delete_file", "extract_archive"})
+# Refused outright once web content is in the turn: nothing in them can be checked against the paths
+# the user named (found in review).
+REFUSED_AFTER_WEB = frozenset({"execute_terminal_command", "download_file"})
+PATH_ARGUMENTS = ("file_path", "directory_path", "path", "archive_path", "extract_to")
+
+
+def _normal(path: str) -> str:
+    """A path in one form for comparing: forward slashes, lowercase, '..' and '.' resolved."""
+    import posixpath
+
+    path = path.replace("\\", "/").lower().strip()
+    drive = ""
+    if re.match(r"^[a-z]:", path):
+        drive, path = path[:2], path[2:]
+    normal = posixpath.normpath(path or "/")
+    return drive + ("" if normal == "." else normal)
 
 
 def _named_by_user(path: str, asked: str) -> bool:
-    """Is `path` (lowercase, forward slashes) a path the user wrote, under one, or a file they named?"""
+    """
+    Is `path` a path the user wrote, or one under it? Both are normalised first, so '..' cannot
+    climb out of a named folder, and a bare file name in the question no longer counts: the same
+    name exists in many folders (both found in review).
+    """
+    target = _normal(path)
     for named in re.findall(r"[a-z]:/[^\s\"'<>|?*,;]*|(?:~|\.{1,2})?/[^\s\"'<>|?*,;]+", asked):
-        named = named.rstrip("./")
-        if named and (path == named or path.startswith(named + "/")):
+        named = _normal(named.rstrip("."))
+        if named and named not in ("/", ".") and (target == named or target.startswith(named.rstrip("/") + "/")):
             return True
-    filename = path.rsplit("/", 1)[-1]
-    return "." in filename and re.search(rf"(?<![\w.]){re.escape(filename)}(?![\w])", asked) is not None
+    return False
 
 
 def build_llm(profile: Profile, *, temperature: float = 0.4, base_url: str | None = None,

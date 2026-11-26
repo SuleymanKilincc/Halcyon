@@ -375,7 +375,7 @@ def _lines_of(path: Path, limit_bytes: int) -> Iterator[str]:
     suffix = path.suffix.lower()
     if suffix in DOCUMENT_SUFFIXES:
         try:
-            if path.stat().st_size > min(limit_bytes, MAX_DOCUMENT_BYTES):
+            if path.stat().st_size > MAX_DOCUMENT_BYTES:
                 return
             yield from document_lines(path)[0]
         except OSError:
@@ -420,10 +420,19 @@ def search(query: str, path: Path) -> str:
     best, closest = 0, []
     words = _words(query)
     scanned = 0
+    too_large = 0
     for file in files:
         if scanned >= SEARCH_MAX_FILES:
             break
         scanned += 1
+        try:
+            size = file.stat().st_size
+        except OSError:
+            continue
+        documents = file.suffix.lower() in DOCUMENT_SUFFIXES
+        if size > (MAX_DOCUMENT_BYTES if documents else limit):
+            too_large += 1          # said in the answer, not silently left out (found in review)
+            continue
         shown_name = file.name if single else file.relative_to(path).as_posix()
         for number, line in enumerate(_lines_of(file, limit), 1):
             folded = _normalise(line)
@@ -449,6 +458,9 @@ def search(query: str, path: Path) -> str:
     notes = []
     if timed_out or scanned >= SEARCH_MAX_FILES:
         notes.append("The search stopped early: search a smaller folder for a complete answer.")
+    if too_large:
+        notes.append(f"{too_large} file{'s were' if too_large != 1 else ' was'} too large to search and "
+                     f"{'were' if too_large != 1 else 'was'} skipped; search in {'them' if too_large != 1 else 'it'} directly.")
 
     if count:
         verb = "lines contain" if count != 1 else "line contains"
