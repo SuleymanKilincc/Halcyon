@@ -336,6 +336,16 @@ class SpeechLLM:
         """Forget the conversation, keep the loaded model."""
         self._history.clear()
 
+    def load_history(self, messages: list[dict[str, Any]]) -> None:
+        """
+        Carry on an earlier conversation (the window reopening a saved chat): its questions and
+        answers become the history, cut to the usual length. Tool results were not saved, so a
+        question about a file read back then is read again.
+        """
+        self._history = [{"role": m["role"], "content": m["text"]} for m in messages
+                         if m.get("role") in ("user", "assistant") and (m.get("text") or "").strip()]
+        self._trim_history()
+
     def reconfigure(self, profile: Profile) -> None:
         """Switch to another model or context length; the conversation is kept."""
         self.profile = profile

@@ -68,7 +68,8 @@ def wait_for(events, kind, count=1, timeout=3.0):
 def test_loading_is_shown_and_then_ready_with_what_was_loaded():
     _, events, _ = make()
     assert events[0] == {"type": "state", "state": "loading", "detail": "Loading the model"}
-    assert {"type": "info", "model": "fake:1b", "hardware": "fake GPU", "mode": "general"} in events
+    assert {"type": "info", "model": "fake:1b", "hardware": "fake GPU", "mode": "general",
+            "history": False} in events
     assert events[-1] == {"type": "state", "state": "ready"}
 
 

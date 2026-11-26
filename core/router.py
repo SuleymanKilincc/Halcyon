@@ -126,6 +126,16 @@ class ModeController:
         self._state = _State(self.llm.profile, self.llm.base_system, True, True)
         self._configure()
 
+    def forget(self) -> None:
+        """
+        Another conversation starts (or an old one is reopened): an offer that was waiting, and
+        the run of requests that leads to one, belonged to the conversation that was left. The
+        mode and its loaded model stay.
+        """
+        self.pending = None
+        self.last_intent = None
+        self._recent.clear()
+
     def set_spoken(self, spoken: bool) -> None:
         """
         Speaking or typing from now on. The window switches between the two (the microphone
