@@ -15,7 +15,7 @@
       "welcome.hint": "Type below, or turn on the microphone and talk.",
       "input.placeholder": "Message Halcyon", "input.voice": "The microphone is on: talk to Halcyon",
       "mic.on": "Turn the microphone on", "mic.off": "Turn the microphone off", "send": "Send",
-      "via.voice": "spoken", "interrupted": "interrupted",
+      "via.voice": "spoken", "interrupted": "interrupted", "cut.error": "cut short by an error",
       "busy": "Not sent: Halcyon is still busy. Your message is kept.",
       "busy.switch": "Halcyon is still busy: wait for the reply, or turn the microphone off first.",
       "chat.new": "New chat", "chats.label": "Chats", "chats.toggle": "Show or hide the chats",
@@ -37,7 +37,7 @@
       "welcome.hint": "Aşağıya yaz ya da mikrofonu açıp konuş.",
       "input.placeholder": "Halcyon'a yaz", "input.voice": "Mikrofon açık: Halcyon'la konuş",
       "mic.on": "Mikrofonu aç", "mic.off": "Mikrofonu kapat", "send": "Gönder",
-      "via.voice": "sesli", "interrupted": "kesildi",
+      "via.voice": "sesli", "interrupted": "kesildi", "cut.error": "bir hata yüzünden yarım kaldı",
       "busy": "Gönderilmedi: Halcyon hâlâ meşgul. Mesajın duruyor.",
       "busy.switch": "Halcyon hâlâ meşgul: cevabı bekle ya da önce mikrofonu kapat.",
       "chat.new": "Yeni sohbet", "chats.label": "Sohbetler", "chats.toggle": "Sohbetleri göster ya da gizle",
@@ -96,6 +96,7 @@
   let chats = [];           // [{id, title, pinned, updated}]
   let activeId = null;      // the saved chat on screen
   let editing = null;       // the chat being renamed
+  let draft = null;         // what has been typed into its name so far
   let confirming = null;    // the chat asking "delete?"
   let historyOn = true;
 
@@ -283,6 +284,7 @@
     messages.forEach((m) => {
       addMessage(m.role, m.text, m.via === "voice" ? t("via.voice") : "");
       if (m.status === "interrupted") addNote(t("interrupted"));
+      if (m.status === "error") addNote(t("cut.error"));
     });
     showWelcome(messages.length === 0);
     conversation.scrollTop = conversation.scrollHeight;
@@ -350,13 +352,18 @@
     if (editing === chat.id) {
       const field = document.createElement("input");
       field.className = "chat-rename";
-      field.value = chat.title;
+      // The list is drawn again whenever a reply is saved; what was typed so far survives it,
+      // where before it was replaced by the old name mid-edit (found in review).
+      const resumed = draft !== null;
+      field.value = resumed ? draft : chat.title;
       field.maxLength = 120;
+      field.addEventListener("input", () => { draft = field.value; });
       let done = false;
       const finish = (save) => {
         if (done) return;
         done = true;
         editing = null;
+        draft = null;
         const title = field.value.trim();
         if (save && title && title !== chat.title) call("rename_chat", chat.id, title);
         renderChats();
@@ -366,10 +373,15 @@
         if (e.key === "Escape") { e.preventDefault(); finish(false); }
         e.stopPropagation();
       });
-      field.addEventListener("blur", () => finish(true));
+      // Drawing the list again removes the field, which blurs it: that is not the user leaving.
+      field.addEventListener("blur", () => { if (field.isConnected) finish(true); });
       field.addEventListener("click", (e) => e.stopPropagation());
       item.appendChild(field);
-      setTimeout(() => { field.focus(); field.select(); }, 0);
+      setTimeout(() => {
+        field.focus();
+        if (resumed) field.setSelectionRange(field.value.length, field.value.length);
+        else field.select();
+      }, 0);
       return item;
     }
 
@@ -411,7 +423,7 @@
     actions.className = "chat-actions";
     actions.append(
       iconButton("pin", chat.pinned ? t("action.unpin") : t("action.pin"), () => call("pin_chat", chat.id, !chat.pinned)),
-      iconButton("rename", t("action.rename"), () => { editing = chat.id; confirming = null; renderChats(); }),
+      iconButton("rename", t("action.rename"), () => { editing = chat.id; draft = null; confirming = null; renderChats(); }),
       iconButton("delete", t("action.delete"), () => { confirming = chat.id; editing = null; renderChats(); }, "danger"),
     );
     item.appendChild(actions);
@@ -425,7 +437,7 @@
     item.addEventListener("keydown", (e) => {
       if (e.target !== item) return;
       if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); }
-      if (e.key === "F2") { e.preventDefault(); editing = chat.id; renderChats(); }
+      if (e.key === "F2") { e.preventDefault(); editing = chat.id; draft = null; renderChats(); }
       if (e.key === "Delete") { e.preventDefault(); confirming = chat.id; renderChats(); }
     });
     return item;

@@ -135,6 +135,8 @@ class ModeController:
         self.pending = None
         self.last_intent = None
         self._recent.clear()
+        # A mode declined in one chat says nothing about another (found in review).
+        self._declined_until.clear()
 
     def set_spoken(self, spoken: bool) -> None:
         """

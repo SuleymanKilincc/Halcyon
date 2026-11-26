@@ -516,3 +516,12 @@ def test_a_machine_without_deep_mode_is_not_told_about_it():
     modes.pop("deep")
     statement = modes_statement(modes, "general")
     assert "deep mode (" not in statement and "research mode (" in statement
+
+
+def test_a_mode_declined_in_one_chat_is_offered_again_in_another():
+    """Found in review of #6: forget() kept the cooldown, so a new chat never heard the offer."""
+    controller, _, _ = make()
+    turn(controller, BIG_EN)
+    turn(controller, "no")
+    controller.forget()                      # the window opened another chat
+    assert "Shall we" in turn(controller, BIG_EN)

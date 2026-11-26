@@ -130,6 +130,19 @@ def page_url() -> str:
     return (WEB / "index.html").as_uri()
 
 
+def open_history():  # noqa: ANN201
+    """
+    The saved chats, or None and the reason. A folder that cannot be written or a damaged file
+    must not keep the window from opening (found in review): the session runs, unsaved.
+    """
+    from ui.history import History
+
+    try:
+        return History(), None
+    except Exception as exc:  # noqa: BLE001
+        return None, f"Chats cannot be saved this time: {exc}"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--demo", action="store_true", help="sample messages, no model")
@@ -139,11 +152,13 @@ def main() -> int:
 
     import webview
 
-    from ui.history import History
+    from ui.history import default_path
     from ui.session import Session
 
     bridge = Bridge(language=system_language(), demo=args.demo)
-    history = None if args.demo or args.no_history else History()
+    history, problem = (None, None) if args.demo or args.no_history else open_history()
+    if problem:
+        bridge.emit({"type": "error", "message": problem})    # shown once the page is ready
     # text_select: pywebview turns selecting text off by default, so nothing could be copied.
     window = webview.create_window("Halcyon", page_url(), js_api=bridge,
                                    width=1180, height=760, min_size=(420, 480), background_color="#0f1b24",
@@ -153,7 +168,9 @@ def main() -> int:
     if session is not None:
         session.start()
     try:
-        webview.start(debug=args.debug)
+        # Not private: pywebview's default forgets the page's storage when the window closes, so
+        # the TR/EN choice and the folded chat list were lost on every restart (found in review).
+        webview.start(debug=args.debug, private_mode=False, storage_path=str(default_path().parent / "webview"))
     finally:
         if session is not None:
             session.close()

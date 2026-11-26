@@ -98,6 +98,7 @@ class Session:
         self.chat_id: int | None = None     # the saved chat on screen; None until its first message
         self._reply: list[str] = []         # the reply being written, to be saved when it is done
         self._reply_via = "text"
+        self._reply_failed = False          # an error arrived while the reply was being written
         self._restore: list[dict] | None = None   # a reopened chat, for a model still loading
 
     # ---------------------------------------------------------------- events
@@ -118,17 +119,22 @@ class Session:
             if self.chat_id is None or not self.history.exists(self.chat_id):
                 self.chat_id = self.history.create(event["text"])
                 self._out({"type": "chat", "id": self.chat_id})
-            self._reply, self._reply_via = [], event.get("via", "text")
+            self._reply, self._reply_via, self._reply_failed = [], event.get("via", "text"), False
             self.history.add(self.chat_id, "user", event["text"], self._reply_via)
             self._send_chats()
         elif kind == "assistant_start":
-            self._reply = []
+            self._reply, self._reply_failed = [], False
         elif kind == "delta":
             self._reply.append(event["text"])
+        elif kind == "error":
+            self._reply_failed = bool(self._reply)
         elif kind == "assistant_done":
             text, self._reply = "".join(self._reply).strip(), []
             if text and self.chat_id is not None:
-                status = "interrupted" if event.get("status") == "interrupted" else ""
+                # A reply an error cut short is kept, marked, so it is not shown or given back to
+                # the model as a finished answer (found in review).
+                status = ("error" if self._reply_failed
+                          else "interrupted" if event.get("status") == "interrupted" else "")
                 self.history.add(self.chat_id, "assistant", text, self._reply_via, status)
                 self._send_chats()
 

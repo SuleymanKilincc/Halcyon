@@ -7,6 +7,7 @@ No window and no model: the store is a real SQLite file in a temporary folder, t
 the fake of tests/test_ui_session.py with a model that records what it was given.
 """
 
+import os
 import threading
 import time
 
@@ -311,3 +312,72 @@ def test_a_long_reopened_chat_is_cut_to_the_usual_length():
         turns += [{"role": "user", "text": f"q{i}"}, {"role": "assistant", "text": f"a{i}"}]
     llm.load_history(turns)
     assert [m["content"] for m in llm._history] == ["q8", "a8", "q9", "a9"]
+
+
+# ------------------------------------------------------------- found in Qodo's review of #6
+
+def test_a_reply_cut_short_by_an_error_is_marked_and_not_given_back_to_the_model(store):
+    session, events, _ = make(store, handler=failing_answer)
+    exchange(session, events)
+    assert store.messages(session.chat_id)[-1] == {"role": "assistant", "text": "Half", "via": "text",
+                                                   "status": "error"}
+    from test_llm_tool_loop import make_llm
+
+    llm = make_llm([])
+    llm.load_history(store.messages(session.chat_id))
+    assert [m["content"] for m in llm._history] == ["hi"]
+
+
+def test_an_error_outside_a_reply_marks_nothing(store):
+    session, events, _ = make(store)
+    session.emit({"type": "error", "message": "The microphone could not start"})
+    exchange(session, events)
+    assert store.messages(session.chat_id)[-1]["status"] == ""
+
+
+@pytest.mark.skipif(os.name != "posix", reason="Windows keeps other users out with the profile's access list")
+def test_saved_chats_are_readable_by_their_owner_only(tmp_path):
+    old = os.umask(0o022)
+    try:
+        History(tmp_path / "data" / "history.db").close()
+    finally:
+        os.umask(old)
+    assert (tmp_path / "data").stat().st_mode & 0o777 == 0o700
+    assert (tmp_path / "data" / "history.db").stat().st_mode & 0o777 == 0o600
+
+
+def test_a_history_that_cannot_open_leaves_the_window_working(tmp_path, monkeypatch):
+    from ui.app import open_history
+
+    blocker = tmp_path / "not-a-folder"
+    blocker.write_text("x")
+    monkeypatch.setenv("HALCYON_DATA", str(blocker))
+    history, problem = open_history()
+    assert history is None and "cannot be saved" in problem
+
+    damaged = tmp_path / "damaged"
+    damaged.mkdir()
+    (damaged / "history.db").write_bytes(b"this is not a database" * 100)
+    monkeypatch.setenv("HALCYON_DATA", str(damaged))
+    history, problem = open_history()
+    assert history is None and problem
+
+
+def test_the_window_keeps_its_page_storage_and_lets_text_be_selected(tmp_path, monkeypatch):
+    """Found in review of #6: pywebview's private mode forgot the TR/EN choice on every restart."""
+    import sys
+    import types
+
+    calls = {}
+    fake = types.ModuleType("webview")
+    fake.create_window = lambda *a, **k: calls.setdefault("window", k) and object()
+    fake.start = lambda **k: calls.setdefault("start", k)
+    monkeypatch.setitem(sys.modules, "webview", fake)
+    monkeypatch.setenv("HALCYON_DATA", str(tmp_path))
+    monkeypatch.setattr(sys, "argv", ["ui", "--demo"])
+    from ui.app import main
+
+    assert main() == 0
+    assert calls["window"]["text_select"] is True
+    assert calls["start"]["private_mode"] is False
+    assert calls["start"]["storage_path"].startswith(str(tmp_path))

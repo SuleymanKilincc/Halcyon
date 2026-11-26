@@ -343,7 +343,8 @@ class SpeechLLM:
         question about a file read back then is read again.
         """
         self._history = [{"role": m["role"], "content": m["text"]} for m in messages
-                         if m.get("role") in ("user", "assistant") and (m.get("text") or "").strip()]
+                         if m.get("role") in ("user", "assistant") and (m.get("text") or "").strip()
+                         and m.get("status") != "error"]     # cut short by an error: not an answer
         self._trim_history()
 
     def reconfigure(self, profile: Profile) -> None:

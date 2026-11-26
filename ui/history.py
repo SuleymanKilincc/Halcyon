@@ -59,6 +59,16 @@ def default_path(env: dict | None = None) -> Path:
     return Path.home() / ".local" / "share" / "halcyon" / "history.db"
 
 
+def _owner_only(path: Path, mode: int) -> None:
+    """
+    Chats are private: on Linux and macOS the folder and the file are made readable by their owner
+    only, whatever the umask (found in review). On Windows the folder is in the user's own
+    profile, whose access list already keeps other users out; chmod there cannot express it.
+    """
+    if os.name == "posix":
+        os.chmod(path, mode)
+
+
 def title_from(text: str) -> str:
     """A chat's first title: its first message on one line, cut at a word."""
     line = " ".join(text.split())
@@ -72,14 +82,22 @@ class History:
     def __init__(self, path: Path | str | None = None, clock=time.time) -> None:  # noqa: ANN001
         self.path = Path(path) if path is not None else default_path()
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        _owner_only(self.path.parent, 0o700)
+        if not self.path.exists():
+            self.path.touch()
+        _owner_only(self.path, 0o600)
         self._clock = clock
         self._lock = threading.Lock()
         self._db = sqlite3.connect(self.path, check_same_thread=False)
-        self._db.row_factory = sqlite3.Row
-        self._db.execute("PRAGMA foreign_keys = ON")
-        self._db.execute("PRAGMA secure_delete = ON")
-        self._db.executescript(SCHEMA)
-        self._db.commit()
+        try:
+            self._db.row_factory = sqlite3.Row
+            self._db.execute("PRAGMA foreign_keys = ON")
+            self._db.execute("PRAGMA secure_delete = ON")
+            self._db.executescript(SCHEMA)
+            self._db.commit()
+        except sqlite3.Error:
+            self._db.close()        # a damaged file: nothing left open behind the error
+            raise
 
     # ------------------------------------------------------------------ writing
 

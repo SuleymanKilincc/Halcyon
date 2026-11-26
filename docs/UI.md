@@ -27,10 +27,10 @@ The direction is a workspace in the spirit of Claude Code and Cursor, with Halcy
 ## Past conversations
 
 - **Saving.** A chat is saved from its first message. Its title is that message, cut at a word, and you can rename it. Pinned chats come first, then the rest are grouped by day.
-- **What is kept.** Your messages and the replies, as the window showed them, each marked typed or spoken. A reply cut off by speaking over it is marked "interrupted". Tool results are not kept, and neither are error messages.
+- **What is kept.** Your messages and the replies, as the window showed them, each marked typed or spoken. A reply cut off by speaking over it is marked "interrupted", and one an error cut short is marked as such: it is shown with a note and not given back to the model as an answer. Tool results are not kept, and neither are error messages.
 - **Reopening.** A chat you reopen continues where it stopped. Its questions and answers become the model's history again, cut to the usual length. A file read back then is read again if you ask about it, because tool results were not saved.
 - **Switching chats** is refused while a reply is being written or the microphone is on: both own the model.
-- **Where it lives.** Only on this computer, never in the cloud or the repository. `HALCYON_DATA=<folder>` moves the file; `python -m ui --no-history` keeps nothing.
+- **Where it lives.** Only on this computer, never in the cloud or the repository. On Linux and macOS the folder and file are readable by their owner only; on Windows the user's own profile already keeps other users out. If the file cannot be opened (a folder that cannot be written, a damaged file), the window still opens, says chats cannot be saved, and works without them. `HALCYON_DATA=<folder>` moves the file; `python -m ui --no-history` keeps nothing.
 - **Deleting.** Deleting really deletes. SQLite normally leaves deleted text in the file's free pages until the file is rebuilt. With `secure_delete` on, the freed pages are overwritten, and a test reads the file back to check. With it off, the same test finds the deleted text.
 
 ## Rules it keeps
@@ -44,7 +44,7 @@ The direction is a workspace in the spirit of Claude Code and Cursor, with Halcy
 
 ## Checked
 
-**Tests.** Forty-one tests cover the session, the store and the bridge:
+**Tests.** Forty-six tests cover the session, the store and the bridge:
 
 - the events arrive in order, and only one reply is written at a time;
 - a model that fails to load or fails half way, and a store that fails, are reported without stopping the conversation;
@@ -62,6 +62,15 @@ The direction is a workspace in the spirit of Claude Code and Cursor, with Halcy
 - "Kaç tane modun var?" was answered with the three modes and the current one.
 - A new chat, then reopening the first one: its two messages came back. "What is the time complexity of this function?" was answered as O(n log log n), so the model had the reopened history.
 - Both chats were in the file with 4 and 2 messages.
+
+**Qodo's review of #6** found six problems, all reproduced and pinned by tests that fail on the old code:
+
+- the TR/EN choice was lost on every restart (pywebview's private mode; the window now keeps its page storage in the Halcyon data folder, checked by closing and reopening it);
+- the history folder could be readable by other users on Linux;
+- a history that could not open stopped the window from starting;
+- a mode declined in one chat stayed quiet in the next;
+- a rename being typed was wiped when a reply finished;
+- a reply cut short by an error was saved as if it were finished.
 
 **Things found and fixed along the way:**
 
