@@ -25,10 +25,11 @@ class Bridge:
     """
     What the page may call. Kept small on purpose: every public attribute of this object is exposed to
     the page, and pywebview walks into them (a public `window` attribute made it walk the whole native
-    window from the wrong thread). So the only public names are the page's four calls and `emit`.
+    window from the wrong thread). So the only public names are the page's calls and `emit`.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, language: str = "en", demo: bool = False) -> None:
+        self._language, self._demo = language, demo
         self._window = None
         self._session = None
         self._ready = threading.Event()
@@ -39,6 +40,10 @@ class Bridge:
         self._window, self._session = window, session
 
     # Called by the page ------------------------------------------------------
+
+    def settings(self) -> dict:
+        """What the page cannot read from its own address (see page_url): its language, and demo or not."""
+        return {"language": self._language, "demo": self._demo}
 
     def ready(self) -> bool:
         """The page has loaded and can draw events: send what came before it, in order."""
@@ -59,6 +64,24 @@ class Bridge:
             return False
         return self._session.mic_on() if on else self._session.mic_off()
 
+    def chats(self) -> list:
+        return self._session.chats() if self._session else []
+
+    def new_chat(self) -> bool:
+        return self._session.new_chat() if self._session else False
+
+    def open_chat(self, chat_id: int) -> bool:
+        return self._session.open_chat(int(chat_id)) if self._session else False
+
+    def rename_chat(self, chat_id: int, title: str) -> bool:
+        return self._session.rename_chat(int(chat_id), str(title)) if self._session else False
+
+    def pin_chat(self, chat_id: int, pinned: bool) -> bool:
+        return self._session.pin_chat(int(chat_id), bool(pinned)) if self._session else False
+
+    def delete_chat(self, chat_id: int) -> bool:
+        return self._session.delete_chat(int(chat_id)) if self._session else False
+
     # Called by the session -------------------------------------------------
 
     def emit(self, event: dict) -> None:
@@ -73,21 +96,59 @@ class Bridge:
             self._window.evaluate_js(f"window.halcyon && window.halcyon.receive({json.dumps(event)})")
 
 
+def system_language() -> str:
+    """
+    "tr" or "en": the first of the user's preferred languages (Windows Settings > Language).
+
+    The web view's own language follows the Windows display language and regional format,
+    which were both English on a machine whose user writes Turkish and put Turkish first in
+    the language list: the window came up in English. The page can still be switched.
+    """
+    names: list[str] = []
+    if sys.platform == "win32":
+        try:
+            import winreg
+
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Control Panel\International\User Profile") as key:
+                names = list(winreg.QueryValueEx(key, "Languages")[0])
+        except OSError:
+            names = []
+    if not names:
+        import locale
+
+        names = [locale.getlocale()[0] or ""]
+    first = (names[0] if names else "").lower()
+    return "tr" if first.startswith(("tr", "turkish")) else "en"
+
+
+def page_url() -> str:
+    """
+    The page, as a file address with nothing after it. WebView2 reads a query string as part of the
+    file name: index.html?demo=1 opened "File not found", so `--demo` never worked in the window.
+    The page asks the bridge for its settings instead (Bridge.settings).
+    """
+    return (WEB / "index.html").as_uri()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--demo", action="store_true", help="sample messages, no model")
     parser.add_argument("--debug", action="store_true", help="allow the web view's developer tools")
+    parser.add_argument("--no-history", action="store_true", help="keep no conversations on disk")
     args = parser.parse_args()
 
     import webview
 
+    from ui.history import History
     from ui.session import Session
 
-    bridge = Bridge()
-    url = (WEB / "index.html").as_uri() + ("?demo=1" if args.demo else "")
-    window = webview.create_window("Halcyon", url, js_api=bridge, width=980, height=720, min_size=(420, 480),
-                                   background_color="#0f1b24")
-    session = None if args.demo else Session(bridge.emit)
+    bridge = Bridge(language=system_language(), demo=args.demo)
+    history = None if args.demo or args.no_history else History()
+    # text_select: pywebview turns selecting text off by default, so nothing could be copied.
+    window = webview.create_window("Halcyon", page_url(), js_api=bridge,
+                                   width=1180, height=760, min_size=(420, 480), background_color="#0f1b24",
+                                   text_select=True)
+    session = None if args.demo else Session(bridge.emit, history=history)
     bridge._attach(window, session)
     if session is not None:
         session.start()
@@ -96,6 +157,8 @@ def main() -> int:
     finally:
         if session is not None:
             session.close()
+        if history is not None:
+            history.close()
     return 0
 
 
