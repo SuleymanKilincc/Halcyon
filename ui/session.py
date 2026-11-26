@@ -12,6 +12,7 @@ come back. Every event is a small dict that becomes JSON for the page:
     {"type": "delta", "text": "..."}          (the reply as it is generated)
     {"type": "assistant_done", "status": "mode: general | ..."}
     {"type": "info", "model": "...", "hardware": "...", "mode": "general"}
+    {"type": "mic", "on": true | false}       (the microphone really is on or off now)
     {"type": "error", "message": "..."}
 
 The work happens on background threads, so the window never freezes while a model loads or a
@@ -87,8 +88,9 @@ class Session:
         self._build = build
         self.assistant: Assistant | None = None
         self._lock = threading.Lock()
-        self._busy = False
-        self._voice = None
+        self._busy = False             # a typed reply owns the model
+        self._voice = None             # the running voice loop, which owns the model while it runs
+        self._mic_starting = False     # a voice loop is being built (owns the model already)
         self._voice_thread: threading.Thread | None = None
 
     # ----------------------------------------------------------------- start
@@ -118,11 +120,11 @@ class Session:
         is empty, the model is not loaded yet, or a reply is still being written.
         """
         text = (text or "").strip()
-        if not text or self.assistant is None or self._voice is not None:
-            # While the microphone is on, the voice loop owns the model: one conversation at a time.
+        if not text or self.assistant is None:
             return False
         with self._lock:
-            if self._busy:
+            # While the microphone is on, the voice loop owns the model: one conversation at a time.
+            if self._busy or self._voice is not None or self._mic_starting:
                 return False
             self._busy = True
         threading.Thread(target=self._answer_text, args=(text,), name="halcyon-ui-text", daemon=True).start()
@@ -156,8 +158,14 @@ class Session:
     def mic_on(self) -> bool:
         """Start listening (the user pressed the button). False if it is already on or not ready."""
         assistant = self.assistant
-        if assistant is None or assistant.make_voice_loop is None or self._voice is not None:
+        if assistant is None or assistant.make_voice_loop is None:
             return False
+        with self._lock:
+            # Reserved before the loop is built, so a second request, or a typed reply, cannot
+            # slip in between the check and the start (found in review).
+            if self._busy or self._voice is not None or self._mic_starting:
+                return False
+            self._mic_starting = True
         from voice.pipeline import VoiceEvents
 
         def state(value: Any) -> None:  # noqa: ANN401
@@ -168,22 +176,40 @@ class Session:
             self.emit({"type": "user", "text": transcript.text, "via": "voice"})
             self.emit({"type": "assistant_start"})
 
+        def speech_start() -> None:
+            # The GPU idles down between turns; waking it while the user is still talking hides
+            # the ~2 s it takes, as the terminal loop does (found in review).
+            prewarm = getattr(assistant.llm, "prewarm", None)
+            if prewarm is not None:
+                prewarm()
+
         events = VoiceEvents(
             on_state=state,
+            on_speech_start=speech_start,
             on_user=user,
             on_response_delta=lambda delta: self.emit({"type": "delta", "text": delta}),
             on_response_done=lambda _text: self.emit({"type": "assistant_done", "status": self._status()}),
             on_barge_in=lambda: self.emit({"type": "assistant_done", "status": "interrupted"}),
             on_error=lambda exc: self.emit({"type": "error", "message": str(exc)}),
         )
-        self._voice = assistant.make_voice_loop(assistant.handler, events)
+        try:
+            loop = assistant.make_voice_loop(assistant.handler, events)
+        except Exception as exc:  # noqa: BLE001
+            with self._lock:
+                self._mic_starting = False
+            self.emit({"type": "error", "message": f"The microphone could not start: {exc}"})
+            self.emit({"type": "mic", "on": False})
+            return False
+        with self._lock:
+            self._voice, self._mic_starting = loop, False
+        self.emit({"type": "mic", "on": True})
         self.emit({"type": "state", "state": "loading", "detail": "Loading the speech models"})
-        self._voice_thread = threading.Thread(target=self._run_voice, name="halcyon-ui-voice", daemon=True)
+        self._voice_thread = threading.Thread(target=self._run_voice, args=(loop,), name="halcyon-ui-voice",
+                                              daemon=True)
         self._voice_thread.start()
         return True
 
-    def _run_voice(self) -> None:
-        loop = self._voice
+    def _run_voice(self, loop: Any) -> None:  # noqa: ANN401
         try:
             loop.run()
         except Exception as exc:  # noqa: BLE001
@@ -193,11 +219,17 @@ class Session:
                 loop.close()
             except Exception:  # noqa: BLE001
                 pass
-            self._voice = None
+            with self._lock:
+                if self._voice is loop:       # only the loop this worker ran
+                    self._voice = None
+            # Said whether it was turned off or stopped by an error, so the page never stays
+            # in its microphone-on state with the message box off (found in review).
+            self.emit({"type": "mic", "on": False})
             self.emit({"type": "state", "state": "ready"})
 
     def mic_off(self) -> bool:
-        loop = self._voice
+        with self._lock:
+            loop = self._voice
         if loop is None:
             return False
         loop.stop()

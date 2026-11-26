@@ -253,9 +253,13 @@ def announces_action(text: str) -> bool:
 
 # Places named in words. Measured in the first window session: "Masaüstümde neler var?" was answered
 # with "Masaüstünüzdeki dosyaları kontrol edeyim mi?" and nothing else.
+# Only a place the user means ("my desktop", "masaüstümde", "bu klasör"), not the word: "What is
+# a folder?" answered with an offer must not become a file listing (found in review).
 _PLACE_IN_TEXT = re.compile(
-    r"\b(?:desktop|documents|downloads|folder|directory|file|files)\b"
-    r"|masaüst|belgeler|indirilen|klasör|dosya",
+    r"\b(?:my|this|that)\s+(?:desktop|documents|downloads|folder|directory|files?|project|computer)\b"
+    r"|\bon\s+(?:the|my)\s+desktop\b|\bin\s+(?:the|my)\s+(?:documents|downloads)\b"
+    r"|masaüstüm\w*|masaüstünde\w*|belgelerim\w*|indirilenler\w*|klasörüm\w*|dosyam\w*"
+    r"|\bbu\s+(?:klasör|dosya)\w*|bilgisayarım\w*",
     re.IGNORECASE)
 
 

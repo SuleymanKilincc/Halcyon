@@ -16,6 +16,7 @@
       "input.placeholder": "Message Halcyon", "input.voice": "The microphone is on: talk to Halcyon",
       "mic.on": "Turn the microphone on", "mic.off": "Turn the microphone off", "send": "Send",
       "via.voice": "spoken", "interrupted": "interrupted",
+      "busy": "Not sent: Halcyon is still busy. Your message is kept.",
     },
     tr: {
       "status.loading": "Yükleniyor", "status.ready": "Hazır", "status.listening": "Dinliyor",
@@ -27,6 +28,7 @@
       "input.placeholder": "Halcyon'a yaz", "input.voice": "Mikrofon açık: Halcyon'la konuş",
       "mic.on": "Mikrofonu aç", "mic.off": "Mikrofonu kapat", "send": "Gönder",
       "via.voice": "sesli", "interrupted": "kesildi",
+      "busy": "Gönderilmedi: Halcyon hâlâ meşgul. Mesajın duruyor.",
     },
   };
   const lang = (navigator.language || "en").toLowerCase().startsWith("tr") ? "tr" : "en";
@@ -51,7 +53,11 @@
   let current = null;       // the assistant bubble being written
   let currentText = "";
   let state = "loading";
-  let micOn = false;
+  let micOn = false;        // what the session says, not what was last clicked
+  let micPending = false;   // a microphone request is on its way
+  let sending = false;      // a message is on its way
+  let frame = 0;            // a render scheduled for the next frame
+  const isDemo = new URLSearchParams(location.search).has("demo");
 
   // ------------------------------------------------- text: safe, lightly formatted
   function escapeHtml(s) {
@@ -116,8 +122,9 @@
     const ready = state !== "loading" && state !== "error";
     const busy = ["thinking", "transcribing", "speaking"].includes(state) && !micOn;
     input.disabled = !ready || micOn || busy;
-    send.disabled = input.disabled || !input.value.trim();
-    mic.disabled = !ready && !micOn;
+    send.disabled = input.disabled || sending || !input.value.trim();
+    // Off while a typed reply is written: the voice loop would use the same model (review).
+    mic.disabled = micPending || (!micOn && (!ready || busy));
     mic.setAttribute("aria-pressed", micOn ? "true" : "false");
     mic.title = micOn ? t("mic.off") : t("mic.on");
     input.placeholder = micOn ? t("input.voice") : t("input.placeholder");
@@ -144,11 +151,18 @@
       case "delta":
         if (!current) { currentText = ""; current = addMessage("assistant", ""); }
         currentText += event.text;
-        current.innerHTML = render(currentText);
         current.classList.add("typing");
-        scrollDown();
+        // Drawn once a frame, not once a fragment: rebuilding a long answer on every fragment
+        // made the work grow with the square of its length (found in review).
+        if (!frame) frame = requestAnimationFrame(flush);
+        break;
+      case "mic":
+        micOn = !!event.on;
+        micPending = false;
+        updateControls();
         break;
       case "assistant_done":
+        if (frame) { cancelAnimationFrame(frame); flush(); }
         if (current) {
           current.classList.remove("typing");
           if (!currentText.trim()) current.parentElement.remove();
@@ -168,6 +182,12 @@
     }
   }
 
+  function flush() {
+    frame = 0;
+    if (current) current.innerHTML = render(currentText);
+    scrollDown();
+  }
+
   function addNote(text) {
     const note = document.createElement("div");
     note.className = "note";
@@ -179,13 +199,31 @@
   // ------------------------------------------------------------ actions out
   const api = () => (window.pywebview && window.pywebview.api) || null;
 
-  function submit() {
+  async function submit() {
     const text = input.value.trim();
-    if (!text || input.disabled) return;
-    input.value = "";
+    if (!text || input.disabled || sending) return;
+    if (isDemo || !api()) {
+      input.value = "";
+      autosize();
+      demoReply(text);
+      return;
+    }
+    sending = true;
+    updateControls();
+    let accepted = false;
+    try {
+      accepted = await api().send(text);
+    } catch (e) {
+      accepted = false;
+    }
+    sending = false;
+    // Cleared only once the session has taken it; a rejected message stays in the box (review).
+    if (accepted) {
+      if (input.value.trim() === text) input.value = "";
+    } else {
+      addNote(t("busy"));
+    }
     autosize();
-    if (api()) api().send(text);
-    else demoReply(text);
   }
 
   function autosize() {
@@ -200,11 +238,25 @@
   input.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); }
   });
-  mic.addEventListener("click", () => {
-    micOn = !micOn;
+  mic.addEventListener("click", async () => {
+    const want = !micOn;
+    if (isDemo || !api()) {
+      receive({ type: "mic", on: want });
+      receive({ type: "state", state: want ? "listening" : "ready" });
+      return;
+    }
+    micPending = true;
     updateControls();
-    if (api()) api().mic(micOn);
-    else receive({ type: "state", state: micOn ? "listening" : "ready" });
+    let ok = false;
+    try {
+      ok = await api().mic(want);
+    } catch (e) {
+      ok = false;
+    }
+    // The session's "mic" event is what turns the button on or off; a refused request only
+    // releases it (found in review: the page stayed "on" after a refused or failed start).
+    if (!ok) micPending = false;
+    updateControls();
   });
 
   window.halcyon = { receive };
@@ -243,7 +295,6 @@
 
   // ------------------------------------------------------------------ start
   setState("loading");
-  const isDemo = new URLSearchParams(location.search).has("demo");
   window.addEventListener("pywebviewready", () => { if (!isDemo) api().ready(); else demo(); });
   setTimeout(() => { if (!window.pywebview) demo(); }, 300);
 })();

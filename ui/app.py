@@ -41,12 +41,14 @@ class Bridge:
     # Called by the page ------------------------------------------------------
 
     def ready(self) -> bool:
-        """The page has loaded and can draw events: send what came before it."""
+        """The page has loaded and can draw events: send what came before it, in order."""
         with self._lock:
-            pending, self._pending = self._pending, []
+            # Drained under the lock, so an event emitted meanwhile waits and comes after these
+            # rather than overtaking them (found in review).
+            for event in self._pending:
+                self._push(event)
+            self._pending = []
             self._ready.set()
-        for event in pending:
-            self._push(event)
         return True
 
     def send(self, text: str) -> bool:
@@ -64,7 +66,7 @@ class Bridge:
             if not self._ready.is_set():
                 self._pending.append(event)
                 return
-        self._push(event)
+            self._push(event)
 
     def _push(self, event: dict) -> None:
         if self._window is not None:

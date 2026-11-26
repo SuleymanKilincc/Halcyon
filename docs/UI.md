@@ -22,7 +22,7 @@ Design: calm and plain, the colours of a dark sea with one turquoise accent; mot
 
 ## Checked
 
-- 13 tests for the session and the bridge: the events in order, one reply at a time, a model that fails to load or fails half way, the microphone never opened by the session, events sent before the page was ready kept in order, model text that cannot break out of the script it is sent in, and the page seeing only the bridge's four calls.
+- 18 tests for the session and the bridge (five of them from Qodo's review: the microphone and a typed reply never share the model, two microphone requests start one loop, the page hears the microphone go off even after an error, speech wakes the GPU, events keep their order while the page catches up): the events in order, one reply at a time, a model that fails to load or fails half way, the microphone never opened by the session, events sent before the page was ready kept in order, model text that cannot break out of the script it is sent in, and the page seeing only the bridge's four calls.
 - The real window, driven through its own page: the model loaded in 22 s, a message typed into the box and sent with the button came back as "The capital of France is Paris." 0.6 s later, the microphone stayed off.
 - `python -m ui --demo`, or the page opened in a browser, plays sample messages with no model, for design work.
 

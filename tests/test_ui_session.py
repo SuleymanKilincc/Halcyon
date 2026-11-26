@@ -238,3 +238,86 @@ def test_the_page_sees_only_the_calls_it_needs():
     """pywebview exposes every public attribute to the page and walks into it."""
     public = {name for name in vars(Bridge()) if not name.startswith("_")} |              {name for name in dir(Bridge) if not name.startswith("_")}
     assert public == {"ready", "send", "mic", "emit"}
+
+
+# ------------------------------------------------------------------ found in Qodo's review of #5
+
+def test_the_microphone_cannot_start_while_a_typed_reply_is_written():
+    loops = []
+    session, events, _ = make(handler=slow_answer, voice_loop=lambda h, e: loops.append(1) or FakeVoiceLoop(h, e))
+    assert session.send_text("hi")
+    assert not session.mic_on()
+    wait_for(events, "assistant_done")
+    assert loops == []
+
+
+def test_two_microphone_requests_at_once_start_one_loop():
+    built = []
+    gate = threading.Event()
+
+    def voice_loop(handler, events):
+        gate.wait(1)                          # hold the first start open while the second arrives
+        built.append(FakeVoiceLoop(handler, events))
+        return built[-1]
+
+    session, events, _ = make(voice_loop=voice_loop)
+    results = []
+    threads = [threading.Thread(target=lambda: results.append(session.mic_on())) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    time.sleep(0.1)
+    gate.set()
+    for thread in threads:
+        thread.join(2)
+    assert sorted(results) == [False, True] and len(built) == 1
+    session.mic_off()
+
+
+def test_the_page_hears_the_microphone_go_on_and_off_even_after_an_error():
+    class BrokenLoop(FakeVoiceLoop):
+        def run(self):
+            raise RuntimeError("no input device")
+
+    session, events, _ = make(voice_loop=lambda h, e: BrokenLoop(h, e))
+    assert session.mic_on()
+    wait_for(events, "mic", count=2)
+    mics = [e["on"] for e in events if e["type"] == "mic"]
+    assert mics == [True, False]
+    assert any("no input device" in e.get("message", "") for e in events)
+    time.sleep(0.05)
+    assert session.send_text("typing works again")
+
+
+def test_speech_starting_wakes_the_gpu_as_the_terminal_loop_does():
+    woken = []
+
+    class SpeakingLoop(FakeVoiceLoop):
+        def run(self):
+            self.events.emit("on_speech_start")
+            self.stopped.wait(1)
+
+    session, events, assistant = make(voice_loop=lambda h, e: SpeakingLoop(h, e))
+    assistant.llm.prewarm = lambda: woken.append(1)
+    session.mic_on()
+    time.sleep(0.1)
+    session.mic_off()
+    assert woken == [1]
+
+
+def test_an_event_emitted_while_the_page_catches_up_comes_after_the_ones_it_was_waiting_for():
+    class SlowWindow(FakeWindow):
+        def evaluate_js(self, script):
+            super().evaluate_js(script)
+            if len(self.scripts) == 1:
+                late = threading.Thread(target=bridge.emit, args=({"type": "state", "state": "thinking"},))
+                late.start()
+                late.join(0.2)              # blocked until the backlog is out
+
+    bridge = Bridge()
+    bridge._attach(SlowWindow(), None)
+    bridge.emit({"type": "state", "state": "loading"})
+    bridge.emit({"type": "state", "state": "ready"})
+    bridge.ready()
+    time.sleep(0.3)
+    order = [s.split('"state": "')[1].split('"')[0] for s in bridge._window.scripts]
+    assert order == ["loading", "ready", "thinking"]
