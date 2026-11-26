@@ -182,6 +182,50 @@ def deferral(text: str) -> str | None:
     return None
 
 
+class ThinkStripper:
+    """
+    Removes <think>...</think> from streamed text, tags split across chunks included.
+
+    Measured: after a nudge the 9B model wrote "<think> </think>" into its reply, which the voice
+    loop would have read out and the typed mode printed. Thinking is off, so whatever is inside
+    is dropped; text before and after is passed on as it arrives.
+    """
+
+    OPEN, CLOSE = "<think>", "</think>"
+
+    def __init__(self) -> None:
+        self._held = ""
+        self._inside = False
+
+    def feed(self, text: str) -> str:
+        data, out = self._held + text, []
+        self._held = ""
+        while data:
+            if self._inside:
+                end = data.find(self.CLOSE)
+                if end < 0:
+                    self._held = data[-(len(self.CLOSE) - 1):]    # a closing tag may be split
+                    return "".join(out)
+                data, self._inside = data[end + len(self.CLOSE):].lstrip(), False
+                continue
+            start = data.find(self.OPEN)
+            if start >= 0:
+                out.append(data[:start])
+                data, self._inside = data[start + len(self.OPEN):], True
+                continue
+            # Keep back a possible start of a tag ("<thi") until the next chunk says what it is.
+            keep = next((n for n in range(min(len(data), len(self.OPEN) - 1), 0, -1)
+                         if self.OPEN.startswith(data[-n:])), 0)
+            out.append(data[:len(data) - keep])
+            self._held = data[len(data) - keep:]
+            break
+        return "".join(out)
+
+    def flush(self) -> str:
+        held, self._held = ("" if self._inside else self._held), ""
+        return held
+
+
 def announces_action(text: str) -> bool:
     """True for a reply that announces or offers an action instead of answering (see deferral)."""
     return deferral(text) is not None
@@ -439,10 +483,11 @@ class SpeechLLM:
                 messages = self._fit_context(self._history, round_system, use_tools=not final)
                 self.last_rounds += 1
                 response = self._raw_stream(messages, system=round_system, use_tools=not final)
+                strip = ThinkStripper()
                 try:
                     for chunk in response:
                         message = chunk.get("message", {}) or {}
-                        text = message.get("content", "")
+                        text = strip.feed(message.get("content", "") or "")
                         if text:
                             assistant_text.append(text)
                             spoken.append(text)
@@ -450,6 +495,11 @@ class SpeechLLM:
                         if not final:
                             for call in message.get("tool_calls") or []:
                                 tool_calls.append(call)
+                    rest = strip.flush()
+                    if rest:
+                        assistant_text.append(rest)
+                        spoken.append(rest)
+                        yield rest
                 finally:
                     close = getattr(response, "close", None)
                     if close is not None:
@@ -457,16 +507,18 @@ class SpeechLLM:
 
                 if not tool_calls:
                     reply = "".join(assistant_text)
-                    self._history.append({"role": "assistant", "content": reply})
                     kind = deferral(reply) if reply.strip() else "announce"
                     acts_on_something = bool(self.last_tool_calls) or mentions_path(prompt)
                     if (not final and nudges < MAX_NUDGES and self._tools_enabled and self._tool_specs
                             and (kind == "announce" or (kind == "offer" and acts_on_something))):
                         # "Let me check the other files." and then nothing, nothing at all, or
                         # "shall I read it?" about a file the user named: send it back to do it.
+                        # The announcement is not stored: two assistant messages in a row made
+                        # the 9B model write raw think tags and invent the file it had not read.
                         nudges += 1
                         note = ACT_NOW_NOTE
                         continue
+                    self._history.append({"role": "assistant", "content": reply})
                     if not reply.strip() and not "".join(spoken).strip():
                         # An empty answer is never shown as an answer (measured once on the
                         # 26B model, after nine rounds of searching).

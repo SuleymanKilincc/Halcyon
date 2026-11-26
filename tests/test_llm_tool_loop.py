@@ -478,3 +478,35 @@ def test_without_web_content_files_are_read_as_before():
     llm = make_llm([[tool_call("read_file", file_path="C:/Users/me/notes.txt")], [text("ok")]], tools=[read_file])
     "".join(llm.stream("what is on my desktop?"))
     assert [m["content"] for m in llm._history if m.get("role") == "tool"] == ["CONTENT OF C:/Users/me/notes.txt"]
+
+
+# ------------------------------------------------------------------ found in the second measured round
+
+@pytest.mark.parametrize("chunks, expected", [
+    (["Hello <think> </think>there."], "Hello there."),
+    (["Hello <thi", "nk>secret</th", "ink> there."], "Hello there."),
+    (["a <b> c"], "a <b> c"),                                   # other tags are left alone
+    (["5 < 6 and <thin"], "5 < 6 and <thin"),                  # an unfinished tag at the end is text
+])
+def test_think_tags_are_stripped_from_the_stream_even_when_split(chunks, expected):
+    from core.llm import ThinkStripper
+
+    strip = ThinkStripper()
+    assert "".join(strip.feed(c) for c in chunks) + strip.flush() == expected
+
+
+def test_a_reply_with_think_tags_never_shows_them():
+    """Measured: "Dosyayı okuyup hatayı kontrol edeyim. <think> </think> Dosyayı okuyorum." from the 9B model."""
+    llm = make_llm([[text("Sonuç: "), text("<think> </th"), text("ink>hata ilk elemanı atlıyor.")]])
+    assert "".join(llm.stream("hata ne?")) == "Sonuç: hata ilk elemanı atlıyor."
+
+
+def test_a_nudge_never_leaves_two_replies_in_a_row_in_the_history():
+    """Two assistant messages in a row made the 9B model write think tags and invent a file it had not read."""
+    llm = make_llm([[text("Let me check the file.")], [tool_call("shout", word="ok")], [text("It says OK.")]],
+                   tools=[shout])
+    "".join(llm.stream("what does it say?"))
+    roles = [m["role"] for m in llm._history]
+    assert all(not (a == b == "assistant") for a, b in zip(roles, roles[1:])), roles
+    second = [m["role"] for m in llm._client.requests[1]["messages"][1:]]
+    assert second == ["user"]                                   # the nudge round starts from the question
